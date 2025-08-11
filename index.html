@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>프로모션 수입 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            /* Tailwind classes will handle background and text color, but keep for fallback/clarity */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        /* Custom scrollbar for dark mode, might not be as visible on light mode but still functional */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #e0e0e0; } /* Lighter track for light background */
+        ::-webkit-scrollbar-thumb { background: #a0a0a0; border-radius: 4px; } /* Lighter thumb */
+        ::-webkit-scrollbar-thumb:hover { background: #707070; } /* Darker hover */
+
+        #fileInput, #incomeFileInput, #loadStateInput { display: none; } /* Added #loadStateInput */
+        .modal { transition: opacity 0.3s ease; }
+
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 15mm;
+            }
+            body * {
+                visibility: hidden;
+            }
+            #print-area, #print-area * {
+                visibility: visible;
+            }
+            #print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            .print-section {
+                padding: 0;
+                margin-bottom: 20px;
+                border: none;
+                page-break-after: always; /* Each scenario on a new page */
+            }
+            .print-section:last-child {
+                page-break-after: auto;
+            }
+            .print-section h2, .print-section h3, .print-section p, .print-section span, .print-section div, .print-table th, .print-table td {
+                color: #000000 !important;
+            }
+            .print-table {
+                margin-top: 5px;
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 8pt;
+            }
+            .print-table th, .print-table td {
+                border: 1px solid #ccc;
+                padding: 4px 5px; /* Adjusted horizontal padding */
+                text-align: left;
+            }
+            .print-table thead tr {
+                background-color: #e2e8f0 !important;
+                font-weight: bold;
+            }
+            .print-table .text-right { text-align: right; }
+            .print-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+            }
+            .print-title {
+                font-size: 1.1rem;
+                font-weight: bold;
+                margin-top: 0.1rem; /* Reduced top margin */
+                margin-bottom: 0.2rem;
+                border-bottom: 2px solid #4a5568;
+                padding-bottom: 4px;
+                background-color: #f1f5f9 !important;
+                padding: 8px;
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-end;
+            }
+            .print-table .print-row-header {
+                border-left-color: transparent;
+                border-right-color: transparent;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 p-4 sm:p-6">
+
+    <div id="main-content">
+        <header class="flex items-center justify-between mb-6 w-full p-4">
+            <img src="https://github.com/incarmarketing/bali-vote-project/blob/main/logo2.png?raw=true" alt="회사 로고" class="h-16 object-contain" onerror="this.onerror=null;this.src='https://placehold.co/64x64/cccccc/000000?text=Logo';">
+            <div class="flex flex-col items-center flex-grow">
+                <h1 class="text-4xl sm:text-5xl font-bold text-gray-900">🖥️ 프로모션 수입 시뮬레이터</h1>
+                <p class="text-gray-600 mt-2">실적과 수입조건 데이터 매칭을 통해 정확한 예상 수입을 계산합니다.</p>
+            </div>
+            <img src="https://github.com/incarmarketing/bali-vote-project/blob/main/logo3.png?raw=true" alt="코스닥 로고" class="h-16 object-contain" onerror="this.onerror=null;this.src='https://placehold.co/64x64/cccccc/000000?text=KOSDAQ';">
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">1. 실적 데이터 및 시나리오</h2>
+                <label for="fileUploadButton" class="w-full inline-block text-center bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 px-4 rounded-lg cursor-pointer transition duration-300">
+                    📁 실적 엑셀 파일 선택
+                </label>
+                <input type="file" id="fileInput" accept=".xlsx, .xls, .csv">
+                <div id="dataStatusDisplay" class="mt-4 w-full p-3 h-16 bg-gray-100 border border-gray-300 rounded-md flex items-center justify-center text-gray-600 text-center">
+                    '실적엑셀파일양식'에 맞춰 작성된 파일을 업로드 해주세요.
+                </div>
+                <div id="scenariosContainer" class="grid md:grid-cols-3 gap-4 mt-4">
+                    </div>
+                <div class="mt-4 pt-4 border-t border-gray-300">
+                    <label for="excludeDirectFamily" class="flex items-center cursor-pointer">
+                        <input type="checkbox" id="excludeDirectFamily" class="form-checkbox h-5 w-5 text-cyan-600 bg-gray-100 border-gray-300 rounded focus:ring-cyan-500">
+                        <span class="ml-3 text-gray-700">"다이렉트" 영업가족 제외 (달성현황)</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">2. 예상 수입 계산 조건 (공통)</h2>
+                <div class="flex items-center space-x-4 mb-4 text-gray-700">
+                    <label class="flex items-center"><input type="radio" name="incomeSource" value="default" class="mr-2" checked>기본값 사용</label>
+                    <label class="flex items-center"><input type="radio" name="incomeSource" value="upload" class="mr-2">엑셀 파일 업로드</label>
+                </div>
+
+                <div id="incomeUploadSection" class="hidden space-y-4">
+                    <div class="flex space-x-4">
+                        <button id="downloadTemplateBtn" class="flex-1 bg-gray-400 hover:bg-gray-500 text-gray-900 font-bold py-3 px-4 rounded-lg transition duration-300">📋 양식 다운로드</button>
+                        <label for="incomeFileInput" id="incomeFileUploadLabel" class="flex-1 inline-block text-center bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg cursor-pointer">📤 파일 업로드</label>
+                        <input type="file" id="incomeFileInput" accept=".xlsx, .xls, .csv">
+                    </div>
+                </div>
+
+                <div id="incomeFileStatusDisplay" class="mt-2 w-full p-3 h-16 bg-gray-100 border border-gray-300 rounded-md flex items-center justify-center text-gray-600 text-center text-sm">
+                    기본값이 설정되었습니다.
+                </div>
+                
+                <div class="mt-4">
+                    <button id="editIncomeParamsBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                        ⚙️ 현재 수입 조건 보기/편집
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-300">
+                    <div class="input-item">
+                        <label for="tripAttendanceRate" class="text-gray-700">달성자(FA) 참석률</label>
+                        <div class="relative flex items-center">
+                            <input type="number" id="tripAttendanceRate" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md text-right pr-10 text-gray-800" value="100">
+                            <span class="absolute right-3 text-gray-500 pointer-events-none">(%)</span>
+                        </div>
+                    </div>
+                    <div class="input-item">
+                        <label for="tripCostPerPerson" class="text-gray-700">1인당 여행 경비</label>
+                        <div class="relative flex items-center">
+                            <input type="number" id="tripCostPerPerson" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md text-right pr-10 text-gray-800" value="2400000" step="100000">
+                            <span class="absolute right-3 text-gray-500 pointer-events-none">(원)</span>
+                        </div>
+                    </div>
+                    <div id="companionSummary" class="col-span-2 bg-gray-100 p-3 rounded-md text-center text-sm text-gray-600 hidden">
+                        </div>
+                    <div class="input-item">
+                        <label for="attendingCompanions" class="text-gray-700">동반 참석인원</label>
+                        <div class="relative flex items-center">
+                            <input type="number" id="attendingCompanions" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md text-right pr-10 text-gray-800" value="0" min="0">
+                            <span class="absolute right-3 text-gray-500 pointer-events-none">(명)</span>
+                        </div>
+                    </div>
+                    <div class="input-item">
+                        <label for="nonAttendeePayout" class="text-gray-700">비참석자 1인당 지급액</label>
+                        <div class="relative flex items-center">
+                            <input type="number" id="nonAttendeePayout" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md text-right pr-10 text-gray-800" value="1400000" step="100000">
+                            <span class="absolute right-3 text-gray-500 pointer-events-none">(원)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex justify-center space-x-4">
+                    <button id="saveButton" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 transform hover:scale-105 shadow-lg">
+                        💾 현재 상태 저장
+                    </button>
+                    <button id="loadButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 transform hover:scale-105 shadow-lg">
+                        📂 저장된 상태 불러오기
+                    </button>
+                    <input type="file" id="loadStateInput" accept=".json">
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-6">
+            <button id="runButton" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-4 px-4 rounded-lg text-xl transition duration-300 transform hover:scale-105 shadow-lg disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed" disabled>
+                📊 시뮬레이션 실행 및 수입 계산
+            </button>
+            <button id="printButton" class="w-full mt-2 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg text-lg transition duration-300 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed" disabled>
+                🖨️ 전체 결과 보고서 인쇄
+            </button>
+        </div>
+
+        <div id="resultsContainer" class="mt-6">
+             <div id="status" class="mb-4 text-blue-600 text-center"></div>
+             </div>
+    </div>
+
+    <div id="modal" class="modal fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                <h2 id="modalTitle" class="text-xl font-bold text-cyan-700">상세 수입 내역</h2>
+                <button id="closeModal" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div id="modalBody" class="p-6 overflow-y-auto text-gray-900"></div>
+        </div>
+    </div>
+
+    <div id="incomeModal" class="modal fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                <h2 class="text-xl font-bold text-cyan-700">수입 조건 편집기</h2>
+                <button id="closeIncomeModal" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div id="incomeModalBody" class="p-6 overflow-y-auto text-gray-900"></div>
+            <div class="p-4 border-t border-gray-200 flex justify-end space-x-4">
+                <button id="saveIncomeParamsBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg">변경사항 저장</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="print-area" class="hidden"></div>
+
+    <script id="worker" type="javascript/worker">
+        // Web Worker for background processing
+        self.onmessage = function(e) {
+            try {
+                const { jsonData, scenarios, incomeParams, commonParams, excludeDirectFamily } = e.data;
+
+                if (!jsonData || jsonData.length === 0) {
+                    self.postMessage({ error: "실적 데이터가 비어있습니다." });
+                    return;
+                }
+                const headers = Object.keys(jsonData[0]);
+                
+                // Find column names dynamically
+                const idCol = headers.find(h => h.includes('사원번호'));
+                const nameCol = headers.find(h => h.includes('담당자') || h.includes('성명'));
+                const dateCol = headers.find(h => h.includes('계약일자'));
+                const performanceCol = headers.find(h => h.includes('최초인정실적'));
+                const companyCol = headers.find(h => h.includes('보험사'));
+                const typeCol = headers.find(h => h.includes('구분'));
+                const recognitionRateCol = headers.find(h => h.includes('ISF인정률'));
+                const salesFamilyCol = headers.find(h => h.includes('영업가족'));
+
+                if (!idCol || !dateCol || !performanceCol || !companyCol || !typeCol || !recognitionRateCol) {
+                    self.postMessage({ error: "실적 파일에 '사원번호', '계약일자', '최초인정실적', '보험사', '구분', 'ISF인정률' 열이 모두 포함되어 있는지 확인해주세요." });
+                    return;
+                }
+
+                // Create a map of company to its type (Life/Non-Life)
+                const companyToTypeMap = {};
+                jsonData.forEach(row => {
+                    const company = String(row[companyCol] || '').trim();
+                    if (!company) return;
+                    const type = String(row[typeCol] || '');
+                    if (!companyToTypeMap[company]) {
+                        companyToTypeMap[company] = type.includes('생보') || type.includes('생명보험') ? '생명보험' : '손해보험';
+                    }
+                });
+
+                // Aggregate ALL performance data by employee. This will be used for INCOME calculation.
+                const unfilteredAggregatedData = {};
+                jsonData.forEach(row => {
+                    const employeeId = row[idCol];
+                    if (!employeeId) return;
+                    const performanceRaw = row[performanceCol] || '0';
+                    const performanceString = String(performanceRaw).replace(/[^0-9.-]/g, '');
+                    let performance = parseFloat(performanceString);
+                    if (isNaN(performance)) return;
+                    const employeeName = nameCol ? row[nameCol] : '';
+                    const contractDateRaw = row[dateCol] || '';
+                    const cleanedDate = String(contractDateRaw).replace(/[^0-9]/g, '');
+                    if (cleanedDate.length < 6) return; 
+                    const month = cleanedDate.substring(4, 6);
+                    if (!unfilteredAggregatedData[employeeId]) unfilteredAggregatedData[employeeId] = { name: employeeName, june: 0, july: 0, august: 0 };
+                    if (month === '06') unfilteredAggregatedData[employeeId].june += performance;
+                    else if (month === '07') unfilteredAggregatedData[employeeId].july += performance;
+                    else if (month === '08') unfilteredAggregatedData[employeeId].august += performance;
+                });
+
+                // Filter data for ACHIEVEMENT DISPLAY based on the excludeDirectFamily flag
+                const achievementData = excludeDirectFamily && salesFamilyCol 
+                    ? jsonData.filter(row => !String(row[salesFamilyCol] || '').trim().startsWith('다이렉트'))
+                    : [...jsonData];
+                
+                // Aggregate filtered performance data for ACHIEVEMENT DISPLAY
+                const aggregatedDataForDisplay = {};
+                achievementData.forEach(row => {
+                    const employeeId = row[idCol];
+                    if (!employeeId) return;
+                    const performanceRaw = row[performanceCol] || '0';
+                    const performanceString = String(performanceRaw).replace(/[^0-9.-]/g, '');
+                    let performance = parseFloat(performanceString);
+                    if (isNaN(performance)) return;
+                    const employeeName = nameCol ? row[nameCol] : '';
+                    const contractDateRaw = row[dateCol] || '';
+                    const cleanedDate = String(contractDateRaw).replace(/[^0-9]/g, '');
+                    if (cleanedDate.length < 6) return; 
+                    const month = cleanedDate.substring(4, 6);
+                    if (!aggregatedDataForDisplay[employeeId]) aggregatedDataForDisplay[employeeId] = { name: employeeName, june: 0, july: 0, august: 0 };
+                    if (month === '06') aggregatedDataForDisplay[employeeId].june += performance;
+                    else if (month === '07') aggregatedDataForDisplay[employeeId].july += performance;
+                    else if (month === '08') aggregatedDataForDisplay[employeeId].august += performance;
+                });
+
+
+                const results = [];
+                // Tiers for achievement bonus calculation. This is a fixed business rule and not affected by the income condition file.
+                const tiers = [
+                    { name: '4구간 초과(1000만)', total: 10000000, cashBonus: 5000000, companions: 3 },
+                    { name: '4구간 초과(800만)',  total: 8000000,  cashBonus: 3000000, companions: 3 },
+                    { name: '4구간 초과(600만)',  total: 6000000,  cashBonus: 1000000, companions: 3 },
+                    { name: '4구간', monthly: 1600000, total: 5200000, cashBonus: 0, companions: 3 },
+                    { name: '3구간', monthly: 1200000, total: 3900000, cashBonus: 0, companions: 2 },
+                    { name: '2구간', monthly: 800000,  total: 2600000, cashBonus: 0, companions: 1 },
+                    { name: '1구간', monthly: 400000,  total: 1300000, cashBonus: 0, companions: 0 }
+                ];
+
+                for (const scenario of scenarios) {
+                    if (isNaN(scenario.growthRate) || isNaN(scenario.monthlyTarget) || isNaN(scenario.totalTarget)) continue;
+
+                    // SECTION 1: CALCULATE METRICS FOR UI DISPLAY (using filtered data)
+                    let allEmployeesData = [];
+                    let nonAchieverCounts = { '80만점 시상': 0, '40만점 시상': 0 };
+                    let display_totalCompanions = 0;
+
+                    for (const employeeId in aggregatedDataForDisplay) {
+                        const empData = aggregatedDataForDisplay[employeeId];
+                        const rate = 1 + scenario.growthRate / 100;
+                        const projectedJune = empData.june * rate;
+                        const projectedJuly = empData.july * rate;
+                        const projectedAugust = empData.august * rate;
+                        const totalProjected = projectedJune + projectedJuly + projectedAugust;
+                        
+                        const isConsecutiveAchieved = projectedJune >= scenario.monthlyTarget && projectedJuly >= scenario.monthlyTarget && projectedAugust >= scenario.monthlyTarget;
+                        const isTotalAchieved = totalProjected >= scenario.totalTarget;
+                        const isAchieved = isConsecutiveAchieved || isTotalAchieved;
+                        
+                        let achievementType = '미달성';
+                        let achievementTier = '해당없음';
+                        let achieverCashBonus = 0;
+                        let companionsForAchiever = 0;
+                        let nonAchieverSpecialBonus = 0; // Initialize for each employee
+
+                        if(isAchieved){
+                            achievementType = isConsecutiveAchieved ? '연속달성' : '합산달성';
+                            for (const tier of tiers) {
+                                const consecutiveMet = tier.monthly ? (projectedJune >= tier.monthly && projectedJuly >= tier.monthly && projectedAugust >= tier.monthly) : false;
+                                const totalMet = tier.total ? (totalProjected >= tier.total) : false;
+                                if (consecutiveMet || totalMet) {
+                                    achievementTier = tier.name;
+                                    achieverCashBonus = tier.cashBonus;
+                                    companionsForAchiever = tier.companions;
+                                    break; 
+                                }
+                            }
+                            display_totalCompanions += companionsForAchiever;
+                        } else {
+                            if (totalProjected >= 800000 && totalProjected < 1300000) {
+                                nonAchieverSpecialBonus = 800000;
+                                nonAchieverCounts['80만점 시상']++;
+                            } else if (totalProjected >= 400000 && totalProjected < 800000) {
+                                nonAchieverSpecialBonus = 400000;
+                                nonAchieverCounts['40만점 시상']++;
+                            }
+                        }
+
+                        allEmployeesData.push({
+                            '사원번호': employeeId, '담당자': empData.name, 
+                            '6월 예상실적': Math.round(projectedJune), '7월 예상실적': Math.round(projectedJuly), '8월 예상실적': Math.round(projectedAugust), 
+                            '3개월 합산실적': Math.round(totalProjected), '달성여부': isAchieved ? '달성' : '미달성', 
+                            '달성유형': achievementType, '달성구간': achievementTier, 
+                            '동반인원': companionsForAchiever,
+                            '추가시상금(달성자)': achieverCashBonus,
+                            '미달성자 특별 시상금': nonAchieverSpecialBonus
+                        });
+                    }
+
+                    const achievers = allEmployeesData.filter(emp => emp['달성여부'] === '달성');
+                    const tierCounts = tiers.reduce((acc, tier) => ({ ...acc, [tier.name]: 0 }), {});
+                    achievers.forEach(achiever => {
+                        if (tierCounts.hasOwnProperty(achiever['달성구간'])) tierCounts[achiever['달성구간']]++;
+                    });
+
+                    // SECTION 2: CALCULATE METRICS FOR INCOME CALCULATION (using UNFILTERED data)
+                    let income_totalTierCashBonus = 0;
+                    let income_totalMonthlyNonAchieverBonus = 0;
+                    let income_totalAchievers = 0;
+                    let income_totalCompanions = 0;
+
+                    for (const employeeId in unfilteredAggregatedData) {
+                        const empData = unfilteredAggregatedData[employeeId];
+                        const rate = 1 + scenario.growthRate / 100;
+                        const projectedJune = empData.june * rate;
+                        const projectedJuly = empData.july * rate;
+                        const projectedAugust = empData.august * rate;
+                        const totalProjected = projectedJune + projectedJuly + projectedAugust;
+                        
+                        const isConsecutiveAchieved = projectedJune >= scenario.monthlyTarget && projectedJuly >= scenario.monthlyTarget && projectedAugust >= scenario.monthlyTarget;
+                        const isTotalAchieved = totalProjected >= scenario.totalTarget;
+                        const isAchieved = isConsecutiveAchieved || isTotalAchieved;
+                        
+                        if (isAchieved) {
+                            income_totalAchievers++;
+                            for (const tier of tiers) {
+                                const consecutiveMet = tier.monthly ? (projectedJune >= tier.monthly && projectedJuly >= tier.monthly && projectedAugust >= tier.monthly) : false;
+                                const totalMet = tier.total ? (totalProjected >= tier.total) : false;
+                                if (consecutiveMet || totalMet) {
+                                    income_totalTierCashBonus += tier.cashBonus;
+                                    income_totalCompanions += tier.companions;
+                                    break; 
+                                }
+                            }
+                        } else {
+                            if (totalProjected >= 800000 && totalProjected < 1300000) {
+                                income_totalMonthlyNonAchieverBonus += 800000;
+                            } else if (totalProjected >= 400000 && totalProjected < 800000) {
+                                income_totalMonthlyNonAchieverBonus += 400000;
+                            }
+                        }
+                    }
+                    
+                    // SECTION 3: CALCULATE INCOME & EXPENSE
+                    const nonLifeCompanyPerformances = {};
+                    const employeeCompanyMonthlyPerf = {};
+                    let totalLifeInsuranceRevenue = 0;
+                    let lifeInsuranceRevenueDetails = {};
+                    let monthlyPerformanceByCompany = {};
+
+                    jsonData.forEach(row => {
+                        const type = String(row[typeCol] || '');
+                        let companyFromData = String(row[companyCol] || '').trim();
+                        if (!companyFromData) return;
+
+                        const performance = parseFloat(String(row[performanceCol] || '0').replace(/[^0-9.-]/g, ''));
+                        if(isNaN(performance)) return;
+                        
+                        const growthRate = 1 + scenario.growthRate / 100;
+                        const projectedPerformance = performance * growthRate;
+                        
+                        const cleanedDate = String(row[dateCol] || '').replace(/[^0-9]/g, '');
+                        if(cleanedDate.length >= 6) {
+                            const month = cleanedDate.substring(4, 6);
+                            if (!monthlyPerformanceByCompany[companyFromData]) {
+                                monthlyPerformanceByCompany[companyFromData] = { june: 0, july: 0, august: 0 };
+                            }
+                            if (month === '06') monthlyPerformanceByCompany[companyFromData].june += projectedPerformance;
+                            else if (month === '07') monthlyPerformanceByCompany[companyFromData].july += projectedPerformance;
+                            else if (month === '08') monthlyPerformanceByCompany[companyFromData].august += projectedPerformance;
+                        }
+
+
+                        if (type.includes('손보') || type.includes('손해보험')) {
+                            if (companyFromData === 'MG손보') return;
+                            const employeeId = row[idCol];
+                            if(employeeId && cleanedDate.length >= 6) {
+                                if(!nonLifeCompanyPerformances[companyFromData]) nonLifeCompanyPerformances[companyFromData] = 0;
+                                nonLifeCompanyPerformances[companyFromData] += performance;
+
+                                if(!employeeCompanyMonthlyPerf[employeeId]) employeeCompanyMonthlyPerf[employeeId] = {};
+                                if(!employeeCompanyMonthlyPerf[employeeId][companyFromData]) employeeCompanyMonthlyPerf[employeeId][companyFromData] = {june: 0, july: 0, august: 0};
+                                const month = cleanedDate.substring(4, 6);
+                                if(month === '06') employeeCompanyMonthlyPerf[employeeId][companyFromData].june += performance;
+                                else if (month === '07') employeeCompanyMonthlyPerf[employeeId][companyFromData].july += performance;
+                                else if (month === '08') employeeCompanyMonthlyPerf[employeeId][companyFromData].august += performance;
+                            }
+                        } else if (type.includes('생보') || type.includes('생명보험')) {
+                            const recognitionRateFromData = parseFloat(row[recognitionRateCol]);
+                            if (isNaN(recognitionRateFromData)) return;
+                            
+                            const lifeRule = incomeParams.life.find(rule => {
+                                const ruleCompany = String(rule.company || '').trim();
+                                const ruleRecognitionRate = parseFloat(rule.recognitionRate);
+                                let isMatch = ruleCompany.toUpperCase() === companyFromData.toUpperCase();
+                                if (!isMatch) {
+                                    const upperCaseCompanyFromData = companyFromData.toUpperCase();
+                                    if (ruleCompany === 'KB라이프생명' && upperCaseCompanyFromData === 'KB라이프') isMatch = true;
+                                    else if (ruleCompany === '미래에셋' && upperCaseCompanyFromData === '미래에셋생명') isMatch = true;
+                                }
+                                return isMatch && ruleRecognitionRate === recognitionRateFromData;
+                            });
+
+                            if (lifeRule) {
+                                const p = (val) => parseFloat(String(val).replace(/[^0-9.]/g, '')) || 0;
+                                const retentionRate = p(lifeRule.retentionRate);
+                                const lifeBonusNextMonth = projectedPerformance * p(lifeRule.nextMonth);
+                                const lifeBonus13th = projectedPerformance * p(lifeRule.month13) * retentionRate;
+                                const lifeRevenue = lifeBonusNextMonth + lifeBonus13th;
+                                totalLifeInsuranceRevenue += lifeRevenue;
+
+                                if (!lifeInsuranceRevenueDetails[companyFromData]) {
+                                    lifeInsuranceRevenueDetails[companyFromData] = { bonusNextMonth: 0, bonus13th: 0, total: 0 };
+                                }
+                                lifeInsuranceRevenueDetails[companyFromData].bonusNextMonth += lifeBonusNextMonth;
+                                lifeInsuranceRevenueDetails[companyFromData].bonus13th += lifeBonus13th;
+                                lifeInsuranceRevenueDetails[companyFromData].total += lifeRevenue;
+                            }
+                        }
+                    });
+
+                    let totalIncomeDetails = { totalRevenue: 0, totalDeduction: 0, finalIncome: 0 };
+                    let incomeDetailsByCompany = {};
+                    let companyDeductionTotal = 0;
+                    let totalIsfTravelAwardExpense = 0;
+
+                    for(const company in nonLifeCompanyPerformances) {
+                        const params = incomeParams.nonLife[company];
+                        const expenseParams = incomeParams.expense[company];
+                        if(!params || !expenseParams) continue;
+
+                        const projectedPerformance = nonLifeCompanyPerformances[company] * (1 + scenario.growthRate / 100);
+                        const p = (val) => parseFloat(String(val || '0').replace(/[^0-9.]/g, '')) || 0;
+                        const retentionRate = p(params.retentionRate);
+                        
+                        const bonusNextMonth = projectedPerformance * p(params.coopBonusNextMonth);
+                        const bonus13th = projectedPerformance * p(params.coopBonus13th) * retentionRate;
+                        const bonusISF = projectedPerformance * p(params.isfAdd);
+                        const totalRevenue = bonusNextMonth + bonus13th + bonusISF;
+
+                        const dedCommission = projectedPerformance * p(expenseParams.commissionPreservation);
+                        const dedOther = projectedPerformance * p(expenseParams.otherDeduction);
+                        const dedLoss = projectedPerformance * p(expenseParams.lossPreservation);
+                        const dedManagerTO = projectedPerformance * p(expenseParams.isfManagerTO);
+                        const dedManagerSpecialNextMonth = projectedPerformance * p(expenseParams.managerSpecialNextMonth);
+                        const dedManagerSpecial13th = projectedPerformance * p(expenseParams.managerSpecial13th) * retentionRate;
+                        const dedIsfTravel = projectedPerformance * p(expenseParams.isfTravelBonus);
+                        
+                        let dedTravelExpense = 0;
+                        for (const empId in employeeCompanyMonthlyPerf) {
+                            if (employeeCompanyMonthlyPerf[empId][company]) {
+                                const monthlyPerf = employeeCompanyMonthlyPerf[empId][company];
+                                const rate = 1 + scenario.growthRate / 100;
+                                const pJune = monthlyPerf.june * rate;
+                                const pJuly = monthlyPerf.july * rate;
+                                const pAugust = monthlyPerf.august * rate;
+
+                                if (pJune >= 300000) dedTravelExpense += pJune * p(expenseParams.travelExpenseBonus30);
+                                else if (pJune >= 200000) dedTravelExpense += pJune * p(expenseParams.travelExpenseBonus20);
+                                if (pJuly >= 300000) dedTravelExpense += pJuly * p(expenseParams.travelExpenseBonus30);
+                                else if (pJuly >= 200000) dedTravelExpense += pJuly * p(expenseParams.travelExpenseBonus20);
+                                if (pAugust >= 300000) dedTravelExpense += pAugust * p(expenseParams.travelExpenseBonus30);
+                                else if (pAugust >= 200000) dedTravelExpense += pAugust * p(expenseParams.travelExpenseBonus20);
+                            }
+                        }
+
+                        const companyDeduction = dedCommission + dedOther + dedLoss + dedManagerTO + dedManagerSpecialNextMonth + dedManagerSpecial13th + dedTravelExpense;
+                        
+                        incomeDetailsByCompany[company] = { totalRevenue, companyDeduction, details: { bonusNextMonth, bonus13th, bonusISF, dedTravelExpense, dedCommission, dedOther, dedLoss, dedManagerTO, dedManagerSpecialNextMonth, dedManagerSpecial13th, dedIsfTravel } };
+                        totalIncomeDetails.totalRevenue += totalRevenue;
+                        companyDeductionTotal += companyDeduction;
+                        totalIsfTravelAwardExpense += dedIsfTravel;
+                    }
+
+                    totalIncomeDetails.totalRevenue += totalLifeInsuranceRevenue;
+                    totalIncomeDetails.lifeInsuranceRevenueDetails = lifeInsuranceRevenueDetails;
+
+                    const attendanceRate = (commonParams.tripAttendanceRate || 100) / 100;
+                    const nonAttendeeFACount = income_totalAchievers * (1 - attendanceRate);
+                    const savedTripCostFA = nonAttendeeFACount * (commonParams.tripCostPerPerson || 0);
+                    const nonAttendeePayoutTotalFA = nonAttendeeFACount * (commonParams.nonAttendeePayout || 0);
+                    const netNonAttendeeFAIncome = savedTripCostFA - nonAttendeePayoutTotalFA;
+                    totalIncomeDetails.totalRevenue += netNonAttendeeFAIncome;
+                    totalIncomeDetails.netNonAttendeeFAIncome = netNonAttendeeFAIncome;
+
+                    const attendingCompanionsInput = commonParams.attendingCompanions || 0;
+                    const nonAttendingForThisScenario = Math.max(0, income_totalCompanions - attendingCompanionsInput);
+                    const companionNetIncome = nonAttendingForThisScenario * (commonParams.tripCostPerPerson - commonParams.nonAttendeePayout);
+                    totalIncomeDetails.totalRevenue += companionNetIncome;
+                    totalIncomeDetails.companionNetIncome = companionNetIncome;
+                    
+                    totalIncomeDetails.totalDeduction = companyDeductionTotal + totalIsfTravelAwardExpense + income_totalTierCashBonus + income_totalMonthlyNonAchieverBonus;
+                    totalIncomeDetails.finalIncome = totalIncomeDetails.totalRevenue - totalIncomeDetails.totalDeduction;
+                    totalIncomeDetails.totalTierCashBonus = income_totalTierCashBonus;
+                    totalIncomeDetails.totalMonthlyNonAchieverBonus = income_totalMonthlyNonAchieverBonus;
+
+                    let performanceSummary = { life: 0, nonLife: 0, byCompany: {} };
+                    jsonData.forEach(row => {
+                        const performance = parseFloat(String(row[performanceCol] || '0').replace(/[^0-9.-]/g, ''));
+                        if(isNaN(performance)) return;
+                        const projectedPerformance = performance * (1 + scenario.growthRate / 100);
+                        const company = String(row[companyCol] || '').trim();
+                        const type = String(row[typeCol] || '');
+                        if(company) {
+                            if(!performanceSummary.byCompany[company]) performanceSummary.byCompany[company] = 0;
+                            performanceSummary.byCompany[company] += projectedPerformance;
+                        }
+                        if (type.includes('생보') || type.includes('생명보험')) {
+                            performanceSummary.life += projectedPerformance;
+                        } else if (type.includes('손보') || type.includes('손해보험')) {
+                            performanceSummary.nonLife += projectedPerformance;
+                        }
+                    });
+
+                    // SECTION 4: ASSEMBLE FINAL RESULT OBJECT
+                    results.push({
+                        id: scenario.id,
+                        achievers, 
+                        allEmployeesData, 
+                        performanceSummary, 
+                        tierCounts, 
+                        nonAchieverCounts,
+                        incomeDetails: totalIncomeDetails, 
+                        incomeDetailsByCompany, 
+                        totalCompanions: display_totalCompanions, 
+                        monthlyPerformanceByCompany,
+                        companyToTypeMap
+                    });
+                }
+                self.postMessage({ results });
+            } catch (error) {
+                self.postMessage({ error: `워커 오류: ${error.message}\n${error.stack}` });
+            }
+        };
+    </script>
+
+    <script>
+        // Main Page Script
+        const scenariosContainer = document.getElementById('scenariosContainer');
+        const runButton = document.getElementById('runButton');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const statusDiv = document.getElementById('status');
+        const fileInput = document.getElementById('fileInput');
+        const fileUploadButton = document.querySelector('label[for="fileUploadButton"]');
+        const dataStatusDisplay = document.getElementById('dataStatusDisplay');
+        const downloadTemplateBtn = document.getElementById('downloadTemplateBtn');
+        const incomeFileInput = document.getElementById('incomeFileInput');
+        const incomeFileUploadLabel = document.getElementById('incomeFileUploadLabel');
+        const incomeFileStatusDisplay = document.getElementById('incomeFileStatusDisplay');
+        const incomeUploadSection = document.getElementById('incomeUploadSection');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalBody = document.getElementById('modalBody');
+        const closeModalBtn = document.getElementById('closeModal');
+        const companionSummaryDiv = document.getElementById('companionSummary');
+        const printButton = document.getElementById('printButton');
+        const editIncomeParamsBtn = document.getElementById('editIncomeParamsBtn');
+        const incomeModal = document.getElementById('incomeModal');
+        const closeIncomeModalBtn = document.getElementById('closeIncomeModal');
+        const saveIncomeParamsBtn = document.getElementById('saveIncomeParamsBtn');
+        const incomeModalBody = document.getElementById('incomeModalBody');
+        // New save/load buttons
+        const saveButton = document.getElementById('saveButton');
+        const loadButton = document.getElementById('loadButton');
+        const loadStateInput = document.getElementById('loadStateInput'); // New input for loading state
+        
+        let worker;
+        let loadedJsonData = null;
+        let loadedIncomeParams = null;
+        let scenarioResultsData = {};
+
+        // Default income parameters are based on the user's provided '수입지출_조건_양식.xlsx' file.
+        // This data is embedded to ensure it's always available on load.
+        const defaultIncomeParams = {
+            nonLife: {
+                '메리츠화재': { retentionRate: 0.85, coopBonusNextMonth: 1, coopBonus13th: 7.57, isfAdd: 0.5 },
+                '한화손보': { retentionRate: 0.85, coopBonusNextMonth: 0, coopBonus13th: 7.5, isfAdd: 0.5 },
+                'DB손보': { retentionRate: 0.85, coopBonusNextMonth: 0.5, coopBonus13th: 6.5, isfAdd: 0 },
+                '롯데손보': { retentionRate: 0.85, coopBonusNextMonth: 0, coopBonus13th: 6.5, isfAdd: 1 },
+                '흥국화재': { retentionRate: 0.85, coopBonusNextMonth: 0, coopBonus13th: 6.5, isfAdd: 0.5 },
+                '농협손보': { retentionRate: 0.85, coopBonusNextMonth: 0, coopBonus13th: 6.5, isfAdd: 0.5 },
+                '삼성화재': { retentionRate: 0.85, coopBonusNextMonth: 2, coopBonus13th: 4.5, isfAdd: 0.5 },
+                '현대해상': { retentionRate: 0.85, coopBonusNextMonth: 0.5, coopBonus13th: 5.5, isfAdd: 0.8 },
+                'KB손보': { retentionRate: 0.85, coopBonusNextMonth: 0.5, coopBonus13th: 6, isfAdd: 0 },
+                '하나손보': { retentionRate: 0.85, coopBonusNextMonth: 0, coopBonus13th: 5.5, isfAdd: 0.5 },
+                'AIG손보': { retentionRate: 0.85, coopBonusNextMonth: 0, coopBonus13th: 5.5, isfAdd: 0 }
+            },
+            life: [
+                { company: 'ABL생명', recognitionRate: 50, retentionRate: 0.95, nextMonth: 0, month13: 1 },
+                { company: 'ABL생명', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+                { company: 'DB생명', recognitionRate: 110, retentionRate: 0.95, nextMonth: 0, month13: 2.5 },
+                { company: 'DB생명', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+                { company: 'DB생명', recognitionRate: 50, retentionRate: 0.95, nextMonth: 0, month13: 1 },
+                { company: 'IM라이프', recognitionRate: 50, retentionRate: 0.95, nextMonth: 0, month13: 1 },
+                { company: 'KB라이프생명', recognitionRate: 75, retentionRate: 0.95, nextMonth: 0, month13: 1.5 },
+                { company: 'KDB생명', recognitionRate: 50, retentionRate: 0.95, nextMonth: 0, month13: 1 },
+                { company: 'NH농협생명', recognitionRate: 50, retentionRate: 0.95, nextMonth: 0, month13: 1 },
+                { company: '동양생명', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+                { company: '라이나생명', recognitionRate: 50, retentionRate: 0.95, nextMonth: 0, month13: 1 },
+                { company: '라이나생명', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+                { company: '메트라이프', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+                { company: '메트라이프', recognitionRate: 50, retentionRate: 0.95, nextMonth: 1, month13: 0 },
+                { company: '미래에셋', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+                { company: '삼성생명', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+                { company: '신한라이프', recognitionRate: 50, retentionRate: 0.95, nextMonth: 0, month13: 1 },
+                { company: '처브라이프', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+                { company: '푸본현대생명', recognitionRate: 100, retentionRate: 0.95, nextMonth: 1, month13: 1 },
+                { company: '푸본현대생명', recognitionRate: 50, retentionRate: 0.95, nextMonth: 1, month13: 0 },
+                { company: '한화생명', recognitionRate: 50, retentionRate: 0.95, nextMonth: 0, month13: 1 },
+                { company: '흥국생명', recognitionRate: 100, retentionRate: 0.95, nextMonth: 0, month13: 2 },
+            ],
+            expense: {
+                '메리츠화재': { commissionPreservation: 1, otherDeduction: 0.97, lossPreservation: 0.5, isfTravelBonus: 2.2, travelExpenseBonus20: 1.5, travelExpenseBonus30: 2, isfManagerTO: 0.2, managerSpecialNextMonth: 0.5, managerSpecial13th: 0.5 },
+                '한화손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2.2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.5, managerSpecial13th: 0.6 },
+                'DB손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2.2, travelExpenseBonus20: 0.5, travelExpenseBonus30: 1, isfManagerTO: 0.2, managerSpecialNextMonth: 0.5, managerSpecial13th: 0.3 },
+                '롯데손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1.5, travelExpenseBonus30: 2, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
+                '흥국화재': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
+                '농협손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1.5, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
+                '삼성화재': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 0.5, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
+                '현대해상': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
+                'KB손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
+                '하나손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
+                'AIG손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 }
+            }
+        };
+        
+        // Headers for template download, matching the user's file exactly.
+        const templateHeaders = {
+            nonLife: ['보험사', '13회차 유지율', '상생시상 (익월)', '상생시상 (13회_유지)', 'ISF 추가'],
+            life: ['보험사명', 'ISF인정률', '13회차 유지율', '시상재원\n(익월)', '시상재원\n(13회)'],
+            expense: ['보험사', '수수료선지급 보존', '기타 공제', '손실보전', 'ISF 여행시상', '여행경비 추가시상(각월,각보험사,각사원번호별 20만 이상_30만원 미만 시)', '여행경비 추가시상(각월,각보험사,각사원번호별 30만원 이상 시)', 'ISF 관리자 T/O', '익월_관리자특별시책', '13회_관리자특별시책']
+        };
+
+        // Function to check if the run button should be enabled
+        function checkRunButtonStatus() {
+            runButton.disabled = !(loadedJsonData && loadedIncomeParams);
+        }
+
+        // Initial setup on page load
+        window.addEventListener('load', () => {
+            attachEventListeners();
+            createScenarioInputs();
+            loadedIncomeParams = JSON.parse(JSON.stringify(defaultIncomeParams)); // Use a deep copy
+            checkRunButtonStatus();
+        });
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            dataStatusDisplay.textContent = '🔄 파일 읽는 중...';
+            runButton.disabled = true;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true, dateNF:'YYYY-MM-DD' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    loadedJsonData = XLSX.utils.sheet_to_json(worksheet); 
+                    dataStatusDisplay.innerHTML = `<span class="text-green-600 font-bold">✅ 총 ${loadedJsonData.length.toLocaleString()} 건의 데이터가 로드되었습니다.</span>`;
+                    checkRunButtonStatus();
+                } catch (error) {
+                    dataStatusDisplay.innerHTML = `<span class="text-red-600 font-bold">⚠️ 파일 처리 오류: ${error.message}</span>`;
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function handleIncomeFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            incomeFileStatusDisplay.textContent = '🔄 파일 읽는 중...';
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const nonLifeSheet = workbook.Sheets['손보수입'];
+                    const lifeSheet = workbook.Sheets['생보수입'];
+                    const expenseSheet = workbook.Sheets['지출'];
+                    if (!nonLifeSheet || !lifeSheet || !expenseSheet) { throw new Error("엑셀 파일에 '손보수입', '생보수입', '지출' 시트가 모두 필요합니다."); }
+                    const nonLifeJson = XLSX.utils.sheet_to_json(nonLifeSheet, {header:1});
+                    const lifeJson = XLSX.utils.sheet_to_json(lifeSheet, {header:1});
+                    const expenseJson = XLSX.utils.sheet_to_json(expenseSheet, {header:1});
+                    const params = { nonLife: {}, life: [], expense: {} };
+                    nonLifeJson.slice(1).forEach(row => { if(row[0]) params.nonLife[row[0]] = { retentionRate: row[1], coopBonusNextMonth: row[2], coopBonus13th: row[3], isfAdd: row[4] }; });
+                    lifeJson.slice(1).forEach(row => { if(row[0]) params.life.push({ company: row[0], recognitionRate: row[1], retentionRate: row[2], nextMonth: row[3], month13: row[4] }); });
+                    expenseJson.slice(2).forEach(row => { if (row[0]) { params.expense[row[0]] = { commissionPreservation: row[1], otherDeduction: row[2], lossPreservation: row[3], isfTravelBonus: row[4], travelExpenseBonus20: row[5], travelExpenseBonus30: row[6], isfManagerTO: row[7], managerSpecialNextMonth: row[8], managerSpecial13th: row[9] }; } });
+                    loadedIncomeParams = params;
+                    incomeFileStatusDisplay.innerHTML = `<span class="text-green-600 font-bold">✅ 수입 조건 파일이 로드되었습니다.</span>`;
+                    checkRunButtonStatus();
+                } catch (error) {
+                    incomeFileStatusDisplay.innerHTML = `<span class="text-red-600 font-bold">⚠️ 파일 처리 오류: ${error.message}</span>`;
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        
+        function handleIncomeSourceChange() {
+            if (this.value === 'upload') {
+                incomeUploadSection.classList.remove('hidden');
+                incomeFileStatusDisplay.innerHTML = `수입조건 파일을 업로드해주세요.`;
+                loadedIncomeParams = null; 
+            } else {
+                incomeUploadSection.classList.add('hidden');
+                loadedIncomeParams = JSON.parse(JSON.stringify(defaultIncomeParams)); // Reset to a deep copy of defaults
+                incomeFileStatusDisplay.innerHTML = `기본값이 설정되었습니다.`;
+            }
+            checkRunButtonStatus();
+        }
+
+        function createScenarioInputs() {
+            scenariosContainer.innerHTML = '';
+            const defaults = [
+                { growth: 10, monthly: 400000, total: 1300000 },
+                { growth: 20, monthly: 400000, total: 1300000 },
+                { growth: 30, monthly: 400000, total: 1300000 }
+            ];
+            for (let i = 1; i <= 3; i++) {
+                const scenarioDiv = document.createElement('div');
+                scenarioDiv.className = 'p-4 bg-gray-100/50 rounded-lg border border-gray-200'; /* Lighter background */
+                scenarioDiv.innerHTML = `
+                    <h3 class="text-base font-semibold text-blue-600 mb-3">시나리오 ${i}</h3>
+                    <div class="space-y-2">
+                        <div><label class="text-xs text-gray-700">상승/감소율</label><div class="relative flex items-center"><input type="number" id="growthRate${i}" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md text-right pr-10 text-gray-800" value="${defaults[i-1].growth}" step="1"><span class="absolute right-3 text-gray-500 pointer-events-none">(%)</span></div></div>
+                        <div><label class="text-xs text-gray-700">월별 연속 목표</label><div class="relative flex items-center"><input type="number" id="monthlyTarget${i}" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md text-right pr-10 text-gray-800" value="${defaults[i-1].monthly}" step="100000"><span class="absolute right-3 text-gray-500 pointer-events-none">(원)</span></div></div>
+                        <div><label class="text-xs text-gray-700">3개월 합산 목표</label><div class="relative flex items-center"><input type="number" id="totalTarget${i}" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md text-right pr-10 text-gray-800" value="${defaults[i-1].total}" step="100000"><span class="absolute right-3 text-gray-500 pointer-events-none">(원)</span></div></div>
+                    </div>`;
+                scenariosContainer.appendChild(scenarioDiv);
+            }
+        }
+
+        function downloadTemplate() {
+            const wb = XLSX.utils.book_new();
+
+            // 1. Non-Life Sheet
+            const nonLifeData = [templateHeaders.nonLife];
+            Object.keys(defaultIncomeParams.nonLife).forEach(company => {
+                const p = defaultIncomeParams.nonLife[company];
+                nonLifeData.push([company, p.retentionRate, p.coopBonusNextMonth, p.coopBonus13th, p.isfAdd]);
+            });
+            const wsNonLife = XLSX.utils.aoa_to_sheet(nonLifeData);
+            XLSX.utils.book_append_sheet(wb, wsNonLife, '손보수입');
+
+            // 2. Life Sheet
+            const lifeData = [templateHeaders.life.map(h => h.replace(/\n/g, ' '))];
+            defaultIncomeParams.life.forEach(rule => {
+                lifeData.push([rule.company, rule.recognitionRate, rule.retentionRate, rule.nextMonth, rule.month13]);
+            });
+            const wsLife = XLSX.utils.aoa_to_sheet(lifeData);
+            XLSX.utils.book_append_sheet(wb, wsLife, '생보수입');
+
+            // 3. Expense Sheet
+            const expenseData = [
+                ['지출항목', '', '', '', 'ISF', '', '', '관리자', '', ''],
+                templateHeaders.expense.map(h => h.replace(/\n/g, ' ')),
+            ];
+            Object.keys(defaultIncomeParams.expense).forEach(company => {
+                const p = defaultIncomeParams.expense[company];
+                expenseData.push([
+                    company, p.commissionPreservation, p.otherDeduction, p.lossPreservation,
+                    p.isfTravelBonus, p.travelExpenseBonus20, p.travelExpenseBonus30,
+                    p.isfManagerTO, p.managerSpecialNextMonth, p.managerSpecial13th
+                ]);
+            });
+            const wsExpense = XLSX.utils.aoa_to_sheet(expenseData);
+            XLSX.utils.book_append_sheet(wb, wsExpense, '지출');
+
+            XLSX.writeFile(wb, '수입지출_조건_양식.xlsx');
+        }
+        
+        function attachEventListeners() {
+            fileUploadButton.addEventListener('click', () => fileInput.click());
+            incomeFileUploadLabel.addEventListener('click', () => incomeFileInput.click());
+            fileInput.addEventListener('change', handleFileSelect);
+            incomeFileInput.addEventListener('change', handleIncomeFileSelect);
+            document.querySelectorAll('input[name="incomeSource"]').forEach(radio => radio.addEventListener('change', handleIncomeSourceChange));
+            runButton.addEventListener('click', runSimulation);
+            resultsContainer.addEventListener('click', handleResultsClick);
+            closeModalBtn.addEventListener('click', () => {
+                modal.classList.remove('opacity-100');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            });
+            printButton.addEventListener('click', printReport);
+            downloadTemplateBtn.addEventListener('click', downloadTemplate);
+            editIncomeParamsBtn.addEventListener('click', openIncomeEditor);
+            closeIncomeModalBtn.addEventListener('click', () => {
+                incomeModal.classList.remove('opacity-100');
+                setTimeout(() => incomeModal.classList.add('hidden'), 300);
+            });
+            saveIncomeParamsBtn.addEventListener('click', saveIncomeParams);
+            // New event listeners for save/load
+            saveButton.addEventListener('click', saveAppState);
+            loadButton.addEventListener('click', () => loadStateInput.click()); // Trigger hidden file input
+            loadStateInput.addEventListener('change', loadAppState); // Handle file selection for loading
+        }
+
+        function openIncomeEditor() {
+            if (!loadedIncomeParams) {
+                statusDiv.innerText = '⚠️ 수입 조건 데이터가 없습니다. 기본값을 사용하거나 파일을 업로드해주세요.';
+                setTimeout(() => statusDiv.innerText = '', 3000);
+                return;
+            }
+
+            let html = '';
+
+            html += '<h3 class="text-lg font-semibold text-cyan-700 mb-2">손보수입</h3>';
+            html += '<div class="overflow-x-auto"><table id="nonLifeTable" class="w-full text-sm text-left text-gray-800"><thead><tr class="text-xs text-gray-600 uppercase bg-gray-100">'; /* Lighter table headers */
+            templateHeaders.nonLife.forEach(h => html += `<th class="px-4 py-2">${h.replace('\n', '<br>')}</th>`);
+            html += '</tr></thead><tbody>';
+            for (const company in loadedIncomeParams.nonLife) {
+                const params = loadedIncomeParams.nonLife[company];
+                html += `<tr class="border-b border-gray-200">
+                    <td class="px-4 py-2 font-medium">${company}</td>
+                    <td><input type="number" step="0.01" class="w-24 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.retentionRate}"></td>
+                    <td><input type="number" step="0.1" class="w-24 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.coopBonusNextMonth}"></td>
+                    <td><input type="number" step="0.01" class="w-24 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.coopBonus13th}"></td>
+                    <td><input type="number" step="0.1" class="w-24 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.isfAdd}"></td>
+                </tr>`;
+            }
+            html += '</tbody></table></div>';
+
+            html += '<h3 class="text-lg font-semibold text-cyan-700 mt-6 mb-2">생보수입</h3>';
+            html += '<div class="overflow-x-auto"><table id="lifeTable" class="w-full text-sm text-left text-gray-800"><thead><tr class="text-xs text-gray-600 uppercase bg-gray-100">'; /* Lighter table headers */
+            templateHeaders.life.forEach(h => html += `<th class="px-4 py-2">${h.replace('\n', '<br>')}</th>`);
+            html += '</tr></thead><tbody>';
+            loadedIncomeParams.life.forEach((rule, index) => {
+                html += `<tr class="border-b border-gray-200">
+                    <td class="px-4 py-2 font-medium">${rule.company}</td>
+                    <td><input type="number" class="w-24 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${rule.recognitionRate}"></td>
+                    <td><input type="number" step="0.01" class="w-24 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${rule.retentionRate}"></td>
+                    <td><input type="number" step="0.1" class="w-24 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${rule.nextMonth}"></td>
+                    <td><input type="number" step="0.1" class="w-24 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${rule.month13}"></td>
+                </tr>`;
+            });
+            html += '</tbody></table></div>';
+
+            html += '<h3 class="text-lg font-semibold text-cyan-700 mt-6 mb-2">지출</h3>';
+            html += '<div class="overflow-x-auto"><table id="expenseTable" class="w-full text-sm text-left text-gray-800"><thead><tr class="text-xs text-gray-600 uppercase bg-gray-100">'; /* Lighter table headers */
+            templateHeaders.expense.forEach(h => html += `<th class="px-4 py-2">${h.replace(/\n/g, ' ')}</th>`);
+            html += '</tr></thead><tbody>';
+            for (const company in loadedIncomeParams.expense) {
+                const params = loadedIncomeParams.expense[company];
+                html += `<tr class="border-b border-gray-200">
+                    <td class="px-4 py-2 font-medium">${company}</td>
+                    <td><input type="number" step="0.1" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.commissionPreservation}"></td>
+                    <td><input type="number" step="0.01" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.otherDeduction}"></td>
+                    <td><input type="number" step="0.1" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.lossPreservation}"></td>
+                    <td><input type="number" step="0.1" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.isfTravelBonus}"></td>
+                    <td><input type="number" step="0.1" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.travelExpenseBonus20}"></td>
+                    <td><input type="number" step="0.1" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.travelExpenseBonus30}"></td>
+                    <td><input type="number" step="0.1" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.isfManagerTO}"></td>
+                    <td><input type="number" step="0.1" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.managerSpecialNextMonth}"></td>
+                    <td><input type="number" step="0.1" class="w-20 p-1 bg-gray-100 border border-gray-300 rounded text-gray-800" value="${params.managerSpecial13th}"></td>
+                </tr>`;
+            }
+            html += '</tbody></table></div>';
+
+            incomeModalBody.innerHTML = html;
+            incomeModal.classList.remove('hidden');
+            setTimeout(() => incomeModal.classList.add('opacity-100'), 10);
+        }
+
+        function saveIncomeParams() {
+            const newParams = { nonLife: {}, life: [], expense: {} };
+
+            const nonLifeRows = document.querySelectorAll('#nonLifeTable tbody tr');
+            nonLifeRows.forEach(row => {
+                const cells = row.querySelectorAll('td, input');
+                const company = cells[0].textContent;
+                newParams.nonLife[company] = {
+                    retentionRate: parseFloat(cells[1].value),
+                    coopBonusNextMonth: parseFloat(cells[2].value),
+                    coopBonus13th: parseFloat(cells[3].value),
+                    isfAdd: parseFloat(cells[4].value)
+                };
+            });
+
+            const lifeRows = document.querySelectorAll('#lifeTable tbody tr');
+            lifeRows.forEach(row => {
+                const cells = row.querySelectorAll('td, input');
+                newParams.life.push({
+                    company: cells[0].textContent,
+                    recognitionRate: parseFloat(cells[1].value),
+                    retentionRate: parseFloat(cells[2].value),
+                    nextMonth: parseFloat(cells[3].value),
+                    month13: parseFloat(cells[4].value)
+                });
+            });
+
+            const expenseRows = document.querySelectorAll('#expenseTable tbody tr');
+            expenseRows.forEach(row => {
+                const cells = row.querySelectorAll('td, input');
+                const company = cells[0].textContent;
+                newParams.expense[company] = {
+                    commissionPreservation: parseFloat(cells[1].value),
+                    otherDeduction: parseFloat(cells[2].value),
+                    lossPreservation: parseFloat(cells[3].value),
+                    isfTravelBonus: parseFloat(cells[4].value),
+                    travelExpenseBonus20: parseFloat(cells[5].value),
+                    travelExpenseBonus30: parseFloat(cells[6].value),
+                    isfManagerTO: parseFloat(cells[7].value),
+                    managerSpecialNextMonth: parseFloat(cells[8].value),
+                    managerSpecial13th: parseFloat(cells[9].value)
+                };
+            });
+
+            loadedIncomeParams = newParams;
+            incomeFileStatusDisplay.innerHTML = `<span class="text-yellow-600 font-bold">✅ 편집된 수입 조건이 저장되었습니다.</span>`;
+
+            incomeModal.classList.remove('opacity-100');
+            setTimeout(() => incomeModal.classList.add('hidden'), 300);
+        }
+
+        function saveAppState() {
+            statusDiv.innerHTML = '<span class="text-blue-600">🔄 파일 저장 중...</span>';
+            const scenarios = [];
+            for (let i = 1; i <= 3; i++) {
+                scenarios.push({
+                    id: i,
+                    growthRate: parseFloat(document.getElementById(`growthRate${i}`).value) || 0,
+                    monthlyTarget: parseFloat(document.getElementById(`monthlyTarget${i}`).value) || 0,
+                    totalTarget: parseFloat(document.getElementById(`totalTarget${i}`).value) || 0
+                });
+            }
+            const commonParams = {
+                tripAttendanceRate: parseFloat(document.getElementById('tripAttendanceRate').value) || 100,
+                tripCostPerPerson: parseFloat(document.getElementById('tripCostPerPerson').value) || 0,
+                nonAttendeePayout: parseFloat(document.getElementById('nonAttendeePayout').value) || 0,
+                attendingCompanions: parseFloat(document.getElementById('attendingCompanions').value) || 0
+            };
+            const excludeDirectFamily = document.getElementById('excludeDirectFamily').checked;
+
+            const appState = {
+                performanceData: loadedJsonData,
+                incomeParameters: loadedIncomeParams,
+                scenarios: scenarios,
+                commonParameters: commonParams,
+                excludeDirectFamily: excludeDirectFamily
+            };
+
+            const jsonString = JSON.stringify(appState, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'promotion_simulator_state.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url); // Clean up the object URL
+
+            statusDiv.innerHTML = '<span class="text-green-600">✅ 현재 상태가 파일로 저장되었습니다.</span>';
+            setTimeout(() => statusDiv.innerText = '', 5000);
+        }
+
+        function loadAppState(event) {
+            statusDiv.innerHTML = '<span class="text-blue-600">🔄 파일 불러오는 중...</span>';
+            const file = event.target.files[0];
+            if (!file) {
+                statusDiv.innerHTML = '<span class="text-red-600">⚠️ 파일을 선택하지 않았습니다.</span>';
+                setTimeout(() => statusDiv.innerText = '', 3000);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const loadedState = JSON.parse(e.target.result);
+                    
+                    // Restore loadedJsonData
+                    loadedJsonData = loadedState.performanceData;
+                    if (loadedJsonData && loadedJsonData.length > 0) {
+                        dataStatusDisplay.innerHTML = `<span class="text-green-600 font-bold">✅ 총 ${loadedJsonData.length.toLocaleString()} 건의 데이터가 불러와졌습니다.</span>`;
+                    } else {
+                        dataStatusDisplay.innerHTML = `'실적엑셀파일양식'에 맞춰 작성된 파일을 업로드 해주세요.`;
+                    }
+
+                    // Restore loadedIncomeParams
+                    loadedIncomeParams = loadedState.incomeParameters;
+                    if (loadedIncomeParams) {
+                        incomeFileStatusDisplay.innerHTML = `<span class="text-green-600 font-bold">✅ 수입 조건 파일이 불러와졌습니다.</span>`;
+                        // Set income source radio to default, as loaded data acts like a custom default
+                        document.querySelector('input[name="incomeSource"][value="default"]').checked = true;
+                        incomeUploadSection.classList.add('hidden');
+                    } else {
+                        incomeFileStatusDisplay.innerHTML = `기본값이 설정되었습니다.`;
+                        document.querySelector('input[name="incomeSource"][value="default"]').checked = true;
+                        incomeUploadSection.classList.add('hidden');
+                    }
+
+                    // Restore scenarios
+                    if (loadedState.scenarios) {
+                        loadedState.scenarios.forEach((s, i) => {
+                            const scenarioId = i + 1;
+                            document.getElementById(`growthRate${scenarioId}`).value = s.growthRate;
+                            document.getElementById(`monthlyTarget${scenarioId}`).value = s.monthlyTarget;
+                            document.getElementById(`totalTarget${scenarioId}`).value = s.totalTarget;
+                        });
+                    }
+
+                    // Restore common parameters
+                    if (loadedState.commonParameters) {
+                        document.getElementById('tripAttendanceRate').value = loadedState.commonParameters.tripAttendanceRate;
+                        document.getElementById('tripCostPerPerson').value = loadedState.commonParameters.tripCostPerPerson;
+                        document.getElementById('nonAttendeePayout').value = loadedState.commonParameters.nonAttendeePayout;
+                        document.getElementById('attendingCompanions').value = loadedState.commonParameters.attendingCompanions;
+                    }
+
+                    // Restore excludeDirectFamily checkbox
+                    document.getElementById('excludeDirectFamily').checked = loadedState.excludeDirectFamily;
+
+                    statusDiv.innerHTML = `<span class="text-green-600">✅ 상태가 성공적으로 불러와졌습니다.</span>`;
+                    checkRunButtonStatus(); // Re-evaluate run button status
+                } catch (error) {
+                    statusDiv.innerHTML = `<span class="text-red-600">⚠️ 파일 불러오기 오류: ${error.message}</span>`;
+                }
+                setTimeout(() => statusDiv.innerText = '', 5000);
+            };
+            reader.readAsText(file); // Read the file as text for JSON parsing
+        }
+
+        function runSimulation() {
+            statusDiv.innerHTML = '';
+            if (!loadedJsonData || !loadedIncomeParams) { statusDiv.innerText = '⚠️ 실적 데이터와 수입 조건이 모두 준비되어야 합니다.'; return; }
+            const scenarios = [];
+            for (let i = 1; i <= 3; i++) {
+                scenarios.push({ id: i, growthRate: parseFloat(document.getElementById(`growthRate${i}`).value) || 0, monthlyTarget: parseFloat(document.getElementById(`monthlyTarget${i}`).value) || 0, totalTarget: parseFloat(document.getElementById(`totalTarget${i}`).value) || 0 });
+            }
+            const commonParams = {
+                tripAttendanceRate: parseFloat(document.getElementById('tripAttendanceRate').value) || 100,
+                tripCostPerPerson: parseFloat(document.getElementById('tripCostPerPerson').value) || 0,
+                nonAttendeePayout: parseFloat(document.getElementById('nonAttendeePayout').value) || 0,
+                attendingCompanions: parseFloat(document.getElementById('attendingCompanions').value) || 0
+            };
+            const excludeDirectFamily = document.getElementById('excludeDirectFamily').checked;
+
+            resultsContainer.innerHTML = '<div class="text-center py-8"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-600 mx-auto"></div><p class="mt-4 text-gray-700">백그라운드에서 계산 중...</p></div>';
+            runButton.disabled = true; runButton.textContent = '⏳ 계산 중...';
+            printButton.disabled = true;
+            const workerScript = document.getElementById('worker').textContent;
+            const workerBlob = new Blob([workerScript], { type: 'application/javascript' });
+            worker = new Worker(URL.createObjectURL(workerBlob));
+            worker.postMessage({ jsonData: loadedJsonData, scenarios, incomeParams: loadedIncomeParams, commonParams, excludeDirectFamily });
+            
+            worker.onmessage = function(e) {
+                runButton.disabled = false; runButton.textContent = '📊 시뮬레이션 실행 및 수입 계산'; if(worker) worker.terminate();
+                const { results, error } = e.data;
+                if (error) { statusDiv.innerText = `⚠️ ${error}`; resultsContainer.innerHTML = ''; } 
+                else if (!results || results.length === 0) { resultsContainer.innerHTML = '<p class="text-gray-500 text-center pt-16">유효한 시나리오가 없습니다.</p>';} 
+                else {
+                    let summaryText = '<strong class="text-gray-900">시나리오별 총 동반인원:</strong> ';
+                    const summaryParts = results.map(res => `시나리오 ${res.id}: <span class="font-bold text-cyan-600">${res.totalCompanions}</span>명`);
+                    summaryText += summaryParts.join(', ');
+                    companionSummaryDiv.innerHTML = summaryText;
+                    companionSummaryDiv.classList.remove('hidden');
+
+                    resultsContainer.innerHTML = '<h2 class="text-2xl font-semibold mb-4 text-gray-800">4. 시뮬레이션 결과</h2>';
+                    const resultsGrid = document.createElement('div');
+                    resultsGrid.className = 'grid grid-cols-1 lg:grid-cols-3 gap-6';
+                    results.forEach(res => {
+                        const scenarioInput = scenarios.find(s => s.id === res.id);
+                        if(scenarioInput) {
+                            res.growthRate = scenarioInput.growthRate;
+                        }
+                        res.attendingCompanions = commonParams.attendingCompanions;
+                        res.tripAttendanceRate = commonParams.tripAttendanceRate;
+                        res.excludeDirectFamily = excludeDirectFamily; // Store the checkbox status with the result
+                        scenarioResultsData[res.id] = res;
+
+                        const summaryHtml = `<div class="bg-gray-100 p-3 rounded-md text-sm max-h-40 overflow-y-auto"><p class="text-gray-700 font-medium mb-2">📈 보험사별 예상 실적:</p><div class="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-800"><span class="font-semibold text-teal-600">생명보험 합계:</span> <span class="text-right">${Math.round(res.performanceSummary.life).toLocaleString()}</span><span class="font-semibold text-teal-600">손해보험 합계:</span> <span class="text-right">${Math.round(res.performanceSummary.nonLife).toLocaleString()}</span>${Object.entries(res.performanceSummary.byCompany).sort((a, b) => b[1] - a[1]).map(([company, total]) => `<span>${company}:</span> <span class="text-right">${Math.round(total).toLocaleString()}</span>`).join('')}</div></div>`;
+                        const nonAchieverHtml = `<div class="mt-3 bg-gray-100 p-4 rounded-md text-xs"><p class="text-gray-700 font-medium mb-3 text-center">💸 미달성자 특별 시상</p><div class="grid grid-cols-2 gap-4 text-center"><div><p class="font-semibold text-gray-700">3개월 합산<br>(40~80만)</p><p class="text-base font-bold text-yellow-600 mt-1">${res.nonAchieverCounts['40만점 시상'] || 0}명</p></div><div><p class="font-semibold text-gray-700">3개월 합산<br>(80~130万)</p><p class="text-base font-bold text-yellow-600 mt-1">${res.nonAchieverCounts['80만점 시상'] || 0}명</p></div></div></div>`;
+                        const mainTiersHtml = `<div class="grid grid-cols-4 gap-4 text-center">${['1구간', '2구간', '3구간', '4구간'].map(tierName => `<div><p class="font-semibold text-gray-700">${tierName}</p><p class="text-base font-bold text-yellow-600 mt-1">${res.tierCounts[tierName] || 0}명</p></div>`).join('')}</div>`;
+                        const superTiersHtml = `<div class="grid grid-cols-3 gap-4 text-center mt-3 pt-3 border-t border-gray-300">${['4구간 초과(600만)', '4구간 초과(800만)', '4구간 초과(1000만)'].map(tierName => `<div><p class="font-semibold text-gray-700">${tierName.replace('4구간 ', '')}</p><p class="text-base font-bold text-yellow-600 mt-1">${res.tierCounts[tierName] || 0}명</p></div>`).join('')}</div>`;
+                        const tierCountsHtml = `<div class="mt-3 bg-gray-100 p-4 rounded-md text-xs"><p class="text-gray-700 font-medium mb-3 text-center">🏆 구간별 달성 현황</p>${mainTiersHtml}${superTiersHtml}</div>`;
+                        const incomeDetails = res.incomeDetails;
+                        const incomeHtml = `<div class="mt-3 bg-gray-100 p-3 rounded-md text-sm"><p class="text-gray-700 font-medium mb-2">💰 예상 수입 분석:</p><div class="space-y-1 text-gray-800"><div class="flex justify-between text-green-600"><span>(+) 총수입:</span> <span>${Math.round(incomeDetails.totalRevenue).toLocaleString()} 원</span></div><div class="flex justify-between text-red-600"><span>(-) 총지출:</span> <span>${Math.round(incomeDetails.totalDeduction).toLocaleString()} 원</span></div><hr class="border-gray-300 my-1"><div class="flex justify-between font-bold text-lg text-cyan-700"><span>최종예상수익:</span> <span>${Math.round(incomeDetails.finalIncome).toLocaleString()} 원</span></div></div><button data-scenario-id="${res.id}" class="details-btn mt-2 w-full text-xs text-cyan-600 hover:underline">상세 내역 보기</button></div>`;
+                        const resultCard = document.createElement('div');
+                        resultCard.className = 'bg-white p-5 rounded-lg border border-gray-200'; /* Lighter card background */
+                        resultCard.innerHTML = `<h3 class="text-xl font-bold text-teal-600 mb-2">시나리오 ${res.id} 결과</h3><div class="text-center mb-3"><p class="text-lg font-semibold text-gray-800">총 달성 인원: <span class="text-2xl font-bold text-yellow-600">${res.achievers.length.toLocaleString()}</span>명</p></div>${tierCountsHtml}${nonAchieverHtml}<div class="mt-4">${summaryHtml}</div><div class="mt-4">${incomeHtml}</div><button data-scenario-id="${res.id}" class="download-btn mt-4 w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition duration-300">💾 결과 엑셀 다운로드</button>`;
+                        resultsGrid.appendChild(resultCard);
+                    });
+                    resultsContainer.innerHTML = '';
+                    resultsContainer.appendChild(resultsGrid);
+                    printButton.disabled = false;
+                }
+            };
+            worker.onerror = (e) => {
+                statusDiv.innerText = `⚠️ 워커 오류 발생: ${e.message}`;
+                runButton.disabled = false; runButton.textContent = '📊 시뮬레이션 실행 및 수입 계산'; if(worker) worker.terminate();
+            };
+        }
+
+        function handleResultsClick(event) {
+            const target = event.target;
+            const scenarioId = target.dataset.scenarioId;
+            if (!scenarioId) return;
+            
+            const dataToExport = scenarioResultsData[scenarioId];
+            if (!dataToExport) return;
+
+            if (target.classList.contains('download-btn')) {
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dataToExport.achievers), '달성자 명단');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dataToExport.allEmployeesData), '전체 실적 현황');
+                
+                const totalDetails = dataToExport.incomeDetails;
+                const companyDetails = dataToExport.incomeDetailsByCompany;
+                const lifeDetails = dataToExport.incomeDetails.lifeInsuranceRevenueDetails;
+                const detailsData = [];
+                detailsData.push(['총수입 (+)']);
+                detailsData.push(['항목', '금액', '산출근거']);
+                if(lifeDetails) {
+                    detailsData.push(['[생명보험]']);
+                    for(const [company, details] of Object.entries(lifeDetails)){
+                        detailsData.push([`${company} 상생시상(익월)`, Math.round(details.bonusNextMonth), '최초인정실적 × 시상률']);
+                        detailsData.push([`${company} 상생시상(13회)`, Math.round(details.bonus13th), '최초인정실적 × 시상률 × 유지율']);
+                    }
+                }
+                if(companyDetails) {
+                    detailsData.push(['[손해보험]']);
+                    for(const [company, cDetails] of Object.entries(companyDetails)){
+                        const d = cDetails.details;
+                        detailsData.push([`${company} 상생시상(익월)`, Math.round(d.bonusNextMonth), '실적 × 시상률']);
+                        detailsData.push([`${company} 상생시상(13회)`, Math.round(d.bonus13th), '실적 × 시상률 × 유지율']);
+                        detailsData.push([`${company} ISF추가`, Math.round(d.bonusISF), '실적 × 시책률']);
+                    }
+                }
+                detailsData.push(['[공통]']);
+                detailsData.push(['달성자(FA) 비참석자 순수익', Math.round(totalDetails.netNonAttendeeFAIncome), '(여행경비 - 지급액) × FA 비참석 인원']);
+                detailsData.push(['동반인 비참석자 순수익', Math.round(totalDetails.companionNetIncome), '(여행경비 - 지급액) × (총 동반인원 - 참석인원)']);
+                detailsData.push(['총수입 합계', Math.round(totalDetails.totalRevenue), '']);
+                detailsData.push([]);
+                detailsData.push(['총지출 (-)']);
+                detailsData.push(['항목', '금액', '산출근거']);
+                if(companyDetails){
+                    for(const [company, cDetails] of Object.entries(companyDetails)){
+                        const d = cDetails.details;
+                        detailsData.push([`${company} ISF 여행시상`, Math.round(d.dedIsfTravel), '실적 × 시상률']);
+                        detailsData.push([`${company} 여행경비추가`, Math.round(d.dedTravelExpense), '사원/월/보험사별 실적 × 구간별 시상률']);
+                        detailsData.push([`${company} 수수료선지급보존`, Math.round(d.dedCommission), '실적 × 공제율']);
+                        detailsData.push([`${company} 기타 공제`, Math.round(d.dedOther), '실적 × 공제율']);
+                        detailsData.push([`${company} 손실보전`, Math.round(d.dedLoss), '실적 × 공제율']);
+                        detailsData.push([`${company} 관리자T/O`, Math.round(d.dedManagerTO), '실적 × 공제율']);
+                        detailsData.push([`${company} 익월_관리자특별시책`, Math.round(d.dedManagerSpecialNextMonth), '실적 × 시책률']);
+                        detailsData.push([`${company} 13회_관리자특별시책`, Math.round(d.dedManagerSpecial13th), '실적 × 시책률 × 유지율']);
+                    }
+                }
+                detailsData.push(['4구간 초과달성 시상금', Math.round(totalDetails.totalTierCashBonus), '달성자별 추가시상금 합산']);
+                detailsData.push(['미달성자 특별 시상금', Math.round(totalDetails.totalMonthlyNonAchieverBonus), '미달성자 3개월 합산 실적 구간별 시상 합산']);
+                detailsData.push(['총지출 합계', Math.round(totalDetails.totalDeduction), '']);
+                detailsData.push([]);
+                detailsData.push(['최종 예상 수익', Math.round(totalDetails.finalIncome), '총수입 - 총지출']);
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailsData), '상세 수입 내역');
+                XLSX.writeFile(wb, `시나리오${scenarioId}_결과.xlsx`);
+
+            } else if (target.classList.contains('details-btn')) {
+                modalTitle.textContent = `시나리오 ${scenarioId} 상세 수입 내역`;
+                let tableHtml = '<div class="overflow-x-auto"><table class="w-full text-sm text-left text-gray-800"><thead><tr class="text-xs text-gray-600 uppercase bg-gray-100"><th class="px-4 py-2">항목</th><th class="px-4 py-2 text-right">금액</th><th class="px-4 py-2">산출근거</th></tr></thead><tbody>'; /* Lighter modal table headers */
+                const totalDetails = dataToExport.incomeDetails;
+                const companyDetails = dataToExport.incomeDetailsByCompany;
+                const lifeDetails = dataToExport.incomeDetails.lifeInsuranceRevenueDetails;
+                
+                tableHtml += `<tr class="border-b border-gray-200 bg-gray-100/50"><td colspan="3" class="px-4 py-2 font-bold text-teal-700">총수입 (+)</td></tr>`;
+                if(lifeDetails && Object.keys(lifeDetails).length > 0) {
+                    tableHtml += `<tr class="border-b border-gray-200 bg-gray-50/50"><td colspan="3" class="px-4 py-2 font-semibold text-teal-600">[생명보험]</td></tr>`;
+                    for(const [company, details] of Object.entries(lifeDetails)){
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 상생시상(익월)</td><td class="px-4 py-2 text-right text-green-600">${Math.round(details.bonusNextMonth).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">최초인정실적 × 시상률</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 상생시상(13회)</td><td class="px-4 py-2 text-right text-green-600">${Math.round(details.bonus13th).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">최초인정실적 × 시상률 × 유지율</td></tr>`;
+                    }
+                }
+                if(companyDetails && Object.keys(companyDetails).length > 0) {
+                    tableHtml += `<tr class="border-b border-gray-200 bg-gray-50/50"><td colspan="3" class="px-4 py-2 font-semibold text-teal-600">[손해보험]</td></tr>`;
+                    for(const [company, cDetails] of Object.entries(companyDetails)){
+                        const d = cDetails.details;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 상생시상(익월)</td><td class="px-4 py-2 text-right text-green-600">${Math.round(d.bonusNextMonth).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 시상률</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 상생시상(13회)</td><td class="px-4 py-2 text-right text-green-600">${Math.round(d.bonus13th).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 시상률 × 유지율</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} ISF추가</td><td class="px-4 py-2 text-right text-green-600">${Math.round(d.bonusISF).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 시책률</td></tr>`;
+                    }
+                }
+                tableHtml += `<tr class="border-b border-gray-200 bg-gray-50/50"><td colspan="3" class="px-4 py-2 font-semibold text-teal-600">[공통]</td></tr>`;
+                tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">달성자(FA) 비참석자 순수익</td><td class="px-4 py-2 text-right text-green-600">${Math.round(totalDetails.netNonAttendeeFAIncome).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">(여행경비 - 지급액) × FA 비참석 인원</td></tr>`;
+                tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">동반인 비참석자 순수익</td><td class="px-4 py-2 text-right text-green-600">${Math.round(totalDetails.companionNetIncome).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">(여행경비 - 지급액) × (총 동반인원 - 참석인원)</td></tr>`;
+                tableHtml += `<tr class="border-b border-gray-200 bg-gray-100"><td class="px-4 py-2 font-bold">총수입 합계</td><td class="px-4 py-2 text-right font-bold text-green-600">${Math.round(totalDetails.totalRevenue).toLocaleString()}</td><td></td></tr>`;
+                tableHtml += `<tr class="border-b border-gray-200 bg-gray-100/50"><td colspan="3" class="px-4 py-2 font-bold text-red-700">총지출 (-)</td></tr>`;
+                if(companyDetails){
+                    for(const [company, cDetails] of Object.entries(companyDetails)){
+                        const d = cDetails.details;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} ISF 여행시상</td><td class="px-4 py-2 text-right text-red-600">${Math.round(d.dedIsfTravel).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 시상률</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 여행경비추가</td><td class="px-4 py-2 text-right text-red-600">${Math.round(d.dedTravelExpense).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">월별/사원별 실적 × 구간별 시상률</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 수수료선지급보존</td><td class="px-4 py-2 text-right text-red-600">${Math.round(d.dedCommission).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 공제율</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 기타 공제</td><td class="px-4 py-2 text-right text-red-600">${Math.round(d.dedOther).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 공제율</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 손실보전</td><td class="px-4 py-2 text-right text-red-600">${Math.round(d.dedLoss).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 공제율</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 관리자T/O</td><td class="px-4 py-2 text-right text-red-600">${Math.round(d.dedManagerTO).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 공제율</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 익월_관리자특별시책</td><td class="px-4 py-2 text-right text-red-600">${Math.round(d.dedManagerSpecialNextMonth).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 시책률</td></tr>`;
+                        tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">${company} 13회_관리자특별시책</td><td class="px-4 py-2 text-right text-red-600">${Math.round(d.dedManagerSpecial13th).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">실적 × 시책률 × 유지율</td></tr>`;
+                    }
+                }
+                tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">4구간 초과달성 시상금</td><td class="px-4 py-2 text-right text-red-600">${Math.round(totalDetails.totalTierCashBonus).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">달성자별 추가시상금 합산</td></tr>`;
+                tableHtml += `<tr class="border-b border-gray-200"><td class="pl-8 py-2">미달성자 특별 시상금</td><td class="px-4 py-2 text-right text-red-600">${Math.round(totalDetails.totalMonthlyNonAchieverBonus).toLocaleString()}</td><td class="px-4 py-2 text-xs text-gray-500">미달성자 3개월 합산 실적 구간별 시상 합산</td></tr>`;
+                tableHtml += `<tr class="border-b border-gray-200 bg-gray-100"><td class="px-4 py-2 font-bold">총지출 합계</td><td class="px-4 py-2 text-right font-bold text-red-600">${Math.round(totalDetails.totalDeduction).toLocaleString()}</td><td></td></tr>`;
+                tableHtml += `<tr class="bg-gray-200"><td class="px-4 py-2 font-bold text-lg text-cyan-700">최종 예상 수익</td><td class="px-4 py-2 text-right font-bold text-lg text-cyan-700">${Math.round(totalDetails.finalIncome).toLocaleString()}</td><td>총수입 - 총지출</td></tr>`;
+                tableHtml += '</tbody></table></div>';
+                modalBody.innerHTML = tableHtml;
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.add('opacity-100'), 10);
+            }
+        }
+
+        function printReport() {
+            if(Object.keys(scenarioResultsData).length === 0) return;
+
+            const printArea = document.getElementById('print-area');
+            printArea.innerHTML = ''; // Clear previous print content
+            
+            Object.values(scenarioResultsData).forEach(res => {
+                const scenarioSection = document.createElement('div');
+                scenarioSection.className = 'print-section';
+
+                // --- Page 1 Content ---
+                let page1Html = '<div>';
+
+                // Print Header with logos and title
+                page1Html += `
+                    <div style="position: relative; width: 100%; text-align: center; margin-bottom: 10mm;">
+                        <img src="https://github.com/incarmarketing/bali-vote-project/blob/main/logo2.png?raw=true" alt="회사 로고" style="position: absolute; left: 0; top: -20px; height: 70px; width: 70px; object-fit: contain;" onerror="this.onerror=null;this.src='https://placehold.co/70x70/cccccc/000000?text=Logo';">
+                        <div style="margin: 0 auto; padding-top: 0;"> 
+                            <h2 style="font-size: 1.2rem; font-weight: bold; color: #000000; margin-bottom: 0.2rem;">ISF 수입 시뮬레이션 보고서 (시나리오 ${res.id}, 성장률 ${res.growthRate}%)</h2>
+                            <p style="font-size: 0.8rem; color: #555555;">실적과 수입조건 데이터 매칭을 통해 정확한 예상 수입을 계산합니다.</p>
+                        </div>
+                        <img src="https://github.com/incarmarketing/bali-vote-project/blob/main/logo3.png?raw=true" alt="코스닥 로고" style="position: absolute; right: 0; top: -20px; height: 70px; width: 70px; object-fit: contain;" onerror="this.onerror=null;this.src='https://placehold.co/70x70/cccccc/000000?text=KOSDAQ';">
+                    </div>
+                `;
+                
+                // --- New Consolidated Achievement Table ---
+                const attendingFA = Math.round(res.achievers.length * (res.tripAttendanceRate / 100));
+                const nonAttendingFA = res.achievers.length - attendingFA;
+                const nonAttendingCompanion = Math.max(0, res.totalCompanions - res.attendingCompanions);
+
+                const achievementTitle = res.excludeDirectFamily ? '달성현황 (다이렉트 제외)' : '달성 현황';
+                page1Html += `<h3 class="print-title" style="margin-top: 0.1rem;">${achievementTitle}</h3>
+                    <table class="print-table">
+                        <tbody>
+                            <tr>
+                                <td><strong>총 달성인원</strong></td><td class="text-right">${res.achievers.length.toLocaleString()}명</td>
+                                <td><strong>총 동반인원</strong></td><td class="text-right">${res.totalCompanions.toLocaleString()}명</td>
+                            </tr>
+                            <tr>
+                                <td><strong>여행 참석인원 (FA)</strong></td><td class="text-right">${attendingFA.toLocaleString()}명</td>
+                                <td><strong>여행 참석인원 (동반)</strong></td><td class="text-right">${res.attendingCompanions.toLocaleString()}명</td>
+                            </tr>
+                             <tr>
+                                <td><strong>비참석 인원 (FA)</strong></td><td class="text-right">${nonAttendingFA.toLocaleString()}명</td>
+                                <td><strong>비참석 인원 (동반)</strong></td><td class="text-right">${nonAttendingCompanion.toLocaleString()}명</td>
+                            </tr>
+                            <tr><td colspan="4" class="print-row-header" style="background-color: #f1f5f9; font-weight: bold;">구간별 달성 현황</td></tr>
+                            <tr><td><strong>1구간</strong></td><td class="text-right">${res.tierCounts['1구간'] || 0}명</td><td><strong>2구간</strong></td><td class="text-right">${res.tierCounts['2구간'] || 0}명</td></tr>
+                            <tr><td><strong>3구간</strong></td><td class="text-right">${res.tierCounts['3구간'] || 0}명</td><td><strong>4구간</strong></td><td class="text-right">${res.tierCounts['4구간'] || 0}명</td></tr>
+                            <tr><td><strong>600만 초과</strong></td><td class="text-right">${res.tierCounts['4구간 초과(600만)'] || 0}명</td><td><strong>800만 초과</strong></td><td class="text-right">${res.tierCounts['4구간 초과(800만)'] || 0}명</td></tr>
+                            <tr><td><strong>1000만 초과</strong></td><td class="text-right">${res.tierCounts['4구간 초과(1000만)'] || 0}명</td><td colspan="2"></td></tr>
+                            <tr><td colspan="4" class="print-row-header" style="background-color: #f1f5f9; font-weight: bold;">미달성자 특별 시상 현황</td></tr>
+                            <tr><td><strong>40만 ~ 80만</strong></td><td class="text-right">${res.nonAchieverCounts['40만점 시상'] || 0}명</td><td><strong>80만 ~ 130만</strong></td><td class="text-right">${res.nonAchieverCounts['80만점 시상'] || 0}명</td></tr>
+                        </tbody>
+                    </table>`;
+                // --- END: Consolidated Achievement Table ---
+
+                // --- START: Detailed Income/Expense Table ---
+                let detailsTableHtml = `<h3 class="print-title"><span>예상 수입 분석</span><span style="font-size: 8pt; font-weight: normal;">(단위 : 원)</span></h3>`;
+                
+                const totalDetails = res.incomeDetails;
+                const companyDetails = res.incomeDetailsByCompany;
+                const lifeDetails = res.incomeDetails.lifeInsuranceRevenueDetails;
+
+                let total_life_revenue = 0;
+                let total_nonlife_revenue = 0;
+                const total_nonattendee_income = totalDetails.netNonAttendeeFAIncome + totalDetails.companionNetIncome;
+                let total_isf_travel_manager_expense = 0;
+                let total_commission_etc_expense = 0;
+                const total_achievement_bonus = totalDetails.totalTierCashBonus + totalDetails.totalMonthlyNonAchieverBonus;
+                
+                
+                let nonLifeIncomeHtml = '<div><table class="print-table"><thead><tr><th colspan="2">[손해보험] 총수입</th></tr></thead><tbody>';
+                if (companyDetails && Object.keys(companyDetails).length > 0) {
+                    const sortedNonLifeCompanies = Object.entries(companyDetails).sort(([, a], [, b]) => b.totalRevenue - a.totalRevenue);
+                    for (const [company, details] of sortedNonLifeCompanies) {
+                        nonLifeIncomeHtml += `<tr><td>&nbsp;&nbsp;${company}</td><td class="text-right">${Math.round(details.totalRevenue).toLocaleString()}</td></tr>`;
+                        total_nonlife_revenue += details.totalRevenue;
+                        const d = details.details;
+                        total_isf_travel_manager_expense += (d.dedIsfTravel || 0) + (d.dedTravelExpense || 0) + (d.dedManagerTO || 0) + (d.dedManagerSpecialNextMonth || 0) + (d.dedManagerSpecial13th || 0);
+                        total_commission_etc_expense += (d.dedCommission || 0) + (d.dedOther || 0) + (d.dedLoss || 0);
+                    }
+                }
+                nonLifeIncomeHtml += `<tr style="font-weight:bold; background-color: #e3f2fd;"><td>&nbsp;&nbsp;손해보험 소계</td><td class="text-right">${Math.round(total_nonlife_revenue).toLocaleString()}</td></tr>`;
+                
+                const isf_expense_source = total_isf_travel_manager_expense + total_achievement_bonus;
+                const finalSummaryTableHtml = `<table class="print-table" style="margin-top: 10px;"><tbody>
+                    <tr><td colspan="2" style="background-color: #e0f2fe; font-weight:bold;">총수입 (공통 및 합계)</td></tr>
+                    <tr><td>&nbsp;&nbsp;손생보 총수입</td><td class="text-right">${Math.round(total_nonlife_revenue + total_life_revenue).toLocaleString()}</td></tr>
+                    <tr><td>&nbsp;&nbsp;비참석자 차익</td><td class="text-right">${Math.round(total_nonattendee_income).toLocaleString()}</td></tr>
+                    <tr style="background-color: #e0f2fe; font-weight:bold;"><td>총수입 합계</td><td class="text-right">${Math.round(totalDetails.totalRevenue).toLocaleString()}</td></tr>
+                    <tr><td colspan="2" style="background-color: #ffebee; font-weight:bold;">총지출 (-)</td></tr>
+                    <tr><td>&nbsp;&nbsp;ISF 사용재원</td><td class="text-right">${Math.round(isf_expense_source).toLocaleString()}</td></tr>
+                    <tr><td>&nbsp;&nbsp;수수료/기타 공제</td><td class="text-right">${Math.round(total_commission_etc_expense).toLocaleString()}</td></tr>
+                    <tr style="background-color: #ffebee; font-weight:bold;"><td>총지출 합계</td><td class="text-right">${Math.round(totalDetails.totalDeduction).toLocaleString()}</td></tr>
+                    <tr><td style="background-color: #e8f5e9; font-weight:bold;">최종 예상 수익</td><td class="text-right" style="background-color: #e8f5e9; font-weight:bold;">${Math.round(totalDetails.finalIncome).toLocaleString()}</td></tr>
+                </tbody></table>`;
+
+                nonLifeIncomeHtml += '</tbody></table>' + finalSummaryTableHtml + '</div>';
+
+                let lifeIncomeHtml = '<div><table class="print-table"><thead><tr><th colspan="2">[생명보험] 총수입</th></tr></thead><tbody>';
+                if (lifeDetails && Object.keys(lifeDetails).length > 0) {
+                    const sortedLifeCompanies = Object.entries(lifeDetails).sort(([, a], [, b]) => b.total - a.total);
+                    for (const [company, details] of sortedLifeCompanies) {
+                        lifeIncomeHtml += `<tr><td>&nbsp;&nbsp;${company}</td><td class="text-right">${Math.round(details.total).toLocaleString()}</td></tr>`;
+                        total_life_revenue += details.total;
+                    }
+                }
+                lifeIncomeHtml += `<tr style="font-weight:bold; background-color: #e3f2fd;"><td>&nbsp;&nbsp;생명보험 소계</td><td class="text-right">${Math.round(total_life_revenue).toLocaleString()}</td></tr>`;
+                lifeIncomeHtml += '</tbody></table></div>';
+                
+                detailsTableHtml += '<div class="print-grid">' + nonLifeIncomeHtml + lifeIncomeHtml + '</div>';
+                
+                page1Html += detailsTableHtml + '</div>';
+                // --- END: Detailed Income/Expense Table ---
+
+                // --- START: Performance Table (Page 2) ---
+                const companyToTypeMap = res.companyToTypeMap;
+                const perfByCompany = res.monthlyPerformanceByCompany;
+                const lifeCompanies = [];
+                const nonLifeCompanies = [];
+
+                for (const company in perfByCompany) {
+                    const perf = perfByCompany[company];
+                    const total = perf.june + perf.july + perf.august;
+                    const data = { name: company, june: perf.june, july: perf.july, august: perf.august, total: total };
+                    if (companyToTypeMap[company] === '생명보험') {
+                        lifeCompanies.push(data);
+                    } else {
+                        nonLifeCompanies.push(data);
+                    }
+                }
+
+                lifeCompanies.sort((a, b) => b.total - a.total);
+                nonLifeCompanies.sort((a, b) => b.total - a.total);
+
+                let monthlyPerfTable = `<div style="page-break-before: always;"><h3 class="print-title"><span>보험사별 월별/합산 예상 실적</span><span style="font-size: 8pt; font-weight: normal;">(단위 : 원)</span></h3>
+                    <table class="print-table">
+                        <thead><tr><th>보험사 구분/보험사명</th><th class="text-right">6월</th><th class="text-right">7월</th><th class="text-right">8월</th><th class="text-right">합계</th></tr></thead>
+                        <tbody>`;
+
+                const generatePerfRows = (companies, typeName) => {
+                    let html = `<tr><td colspan="5" style="background-color: #f1f5f9; font-weight: bold;">[${typeName}]</td></tr>`;
+                    let juneSubTotal = 0, julySubTotal = 0, augustSubTotal = 0, totalSubTotal = 0;
+                    companies.forEach(c => {
+                        html += `<tr><td>&nbsp;&nbsp;${c.name}</td><td class="text-right">${Math.round(c.june).toLocaleString()}</td><td class="text-right">${Math.round(c.july).toLocaleString()}</td><td class="text-right">${Math.round(c.august).toLocaleString()}</td><td class="text-right">${Math.round(c.total).toLocaleString()}</td></tr>`;
+                        juneSubTotal += c.june; julySubTotal += c.july; augustSubTotal += c.august; totalSubTotal += c.total;
+                    });
+                    html += `<tr style="background-color: #e2e8f0; font-weight: bold;"><td>&nbsp;&nbsp;${typeName} 소계</td><td class="text-right">${Math.round(juneSubTotal).toLocaleString()}</td><td class="text-right">${Math.round(julySubTotal).toLocaleString()}</td><td class="text-right">${Math.round(augustSubTotal).toLocaleString()}</td><td class="text-right">${Math.round(totalSubTotal).toLocaleString()}</td></tr>`;
+                    return { html, totals: { june: juneSubTotal, july: julySubTotal, august: augustSubTotal, total: totalSubTotal } };
+                };
+                
+                const lifePerf = generatePerfRows(lifeCompanies, '생명보험');
+                const nonLifePerf = generatePerfRows(nonLifeCompanies, '손해보험');
+                
+                monthlyPerfTable += nonLifePerf.html;
+                monthlyPerfTable += lifePerf.html;
+
+                const grandTotal = {
+                    june: lifePerf.totals.june + nonLifePerf.totals.june,
+                    july: lifePerf.totals.july + nonLifePerf.totals.july,
+                    august: lifePerf.totals.august + nonLifePerf.totals.august,
+                    total: lifePerf.totals.total + nonLifePerf.totals.total
+                };
+
+                monthlyPerfTable += `<tr style="background-color: #cbd5e1; font-weight: bold;">
+                    <td>총계</td>
+                    <td class="text-right">${Math.round(grandTotal.june).toLocaleString()}</td>
+                    <td class="text-right">${Math.round(grandTotal.july).toLocaleString()}</td>
+                    <td class="text-right">${Math.round(grandTotal.august).toLocaleString()}</td>
+                    <td class="text-right">${Math.round(grandTotal.total).toLocaleString()}</td>
+                </tr></tbody></table></div>`;
+                // --- END: Performance Table ---
+
+                scenarioSection.innerHTML = page1Html + monthlyPerfTable;
+                printArea.appendChild(scenarioSection);
+            });
+            
+            printArea.classList.remove('hidden');
+            window.print();
+            printArea.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
