@@ -13,7 +13,7 @@
             /* Tailwind classes will handle background and text color, but keep for fallback/clarity */
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start; /* Align content to the top */
             min-height: 100vh;
             margin: 0;
             padding: 20px;
@@ -100,8 +100,8 @@
 </head>
 <body class="bg-gray-50 text-gray-900 p-4 sm:p-6">
 
-    <div id="main-content" class="w-full max-w-7xl">
-        <!-- ### HEADER START: Layout changed to stack logos above title ### -->
+    <div id="main-content" class="w-full max-w-7xl mx-auto">
+        <!-- ### HEADER START: New stacked layout for all screen sizes ### -->
         <header class="mb-6 w-full p-2 sm:p-4">
             <!-- Logos container -->
             <div class="flex items-center justify-between">
