@@ -64,6 +64,22 @@
             .print-section h2, .print-section h3, .print-section p, .print-section span, .print-section div, .print-table th, .print-table td {
                 color: #000000 !important;
             }
+            /* Force background colors for charts in print */
+            .print-bar-bg {
+                background-color: #e2e8f0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .print-bar-fill-blue {
+                background-color: #3b82f6 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .print-bar-fill-teal {
+                background-color: #14b8a6 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
             .print-table {
                 margin-top: 5px;
                 width: 100%;
@@ -78,6 +94,8 @@
             .print-table thead tr {
                 background-color: #e2e8f0 !important;
                 font-weight: bold;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
             .print-table .text-right { text-align: right; }
             .print-grid {
@@ -97,6 +115,8 @@
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-end;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
             .print-table .print-row-header {
                 border-left-color: transparent;
@@ -267,7 +287,7 @@
                 const typeCol = headers.find(h => h.includes('구분'));
                 const recognitionRateCol = headers.find(h => h.includes('ISF인정률'));
                 const salesFamilyCol = headers.find(h => h.includes('영업가족'));
-                const productCol = headers.find(h => h.includes('상품') || h.includes('상품명')); // New column detection
+                const productCol = headers.find(h => h.includes('상품') || h.includes('상품명')); 
 
                 if (!idCol || !dateCol || !performanceCol || !companyCol || !typeCol || !recognitionRateCol) {
                     self.postMessage({ error: "실적 파일에 '사원번호', '계약일자', '최초인정실적', '보험사', '구분', 'ISF인정률' 열이 모두 포함되어 있는지 확인해주세요." });
@@ -338,6 +358,11 @@
                     { name: '1구간', monthly: 400000,  total: 1300000, cashBonus: 0, companions: 0 }
                 ];
 
+                const specialBonus = incomeParams.specialBonus || {
+                    tier1: { min: 400000, max: 800000, amount: 400000 },
+                    tier2: { min: 800000, max: 1300000, amount: 800000 }
+                };
+
                 for (const scenario of scenarios) {
                     if (isNaN(scenario.growthRate) || isNaN(scenario.monthlyTarget) || isNaN(scenario.totalTarget)) continue;
 
@@ -377,11 +402,11 @@
                             }
                             display_totalCompanions += companionsForAchiever;
                         } else {
-                            if (totalProjected >= 800000 && totalProjected < 1300000) {
-                                nonAchieverSpecialBonus = 800000;
+                            if (totalProjected >= specialBonus.tier2.min && totalProjected < specialBonus.tier2.max) {
+                                nonAchieverSpecialBonus = specialBonus.tier2.amount;
                                 nonAchieverCounts['80만점 시상']++;
-                            } else if (totalProjected >= 400000 && totalProjected < 800000) {
-                                nonAchieverSpecialBonus = 400000;
+                            } else if (totalProjected >= specialBonus.tier1.min && totalProjected < specialBonus.tier1.max) {
+                                nonAchieverSpecialBonus = specialBonus.tier1.amount;
                                 nonAchieverCounts['40만점 시상']++;
                             }
                         }
@@ -432,10 +457,10 @@
                                 }
                             }
                         } else {
-                            if (totalProjected >= 800000 && totalProjected < 1300000) {
-                                income_totalMonthlyNonAchieverBonus += 800000;
-                            } else if (totalProjected >= 400000 && totalProjected < 800000) {
-                                income_totalMonthlyNonAchieverBonus += 400000;
+                            if (totalProjected >= specialBonus.tier2.min && totalProjected < specialBonus.tier2.max) {
+                                income_totalMonthlyNonAchieverBonus += specialBonus.tier2.amount;
+                            } else if (totalProjected >= specialBonus.tier1.min && totalProjected < specialBonus.tier1.max) {
+                                income_totalMonthlyNonAchieverBonus += specialBonus.tier1.amount;
                             }
                         }
                     }
@@ -639,6 +664,32 @@
                     }
                     topProducts.sort((a, b) => b.amount - a.amount);
 
+                    // Calculate Profit Analysis (Best Profit, Best Margin)
+                    let bestProfitCompany = { name: '-', value: 0 };
+                    let bestMarginCompany = { name: '-', value: 0 };
+
+                    for (const [company, details] of Object.entries(incomeDetailsByCompany)) {
+                        const revenue = details.totalRevenue;
+                        const deduction = details.companyDeduction;
+                        const profit = revenue - deduction;
+                        let margin = 0;
+                        if (revenue > 0) {
+                            margin = (profit / revenue) * 100;
+                        }
+
+                        if (profit > bestProfitCompany.value) {
+                            bestProfitCompany = { name: company, value: profit };
+                        }
+                        if (margin > bestMarginCompany.value) {
+                            bestMarginCompany = { name: company, value: margin };
+                        }
+                    }
+                    
+                    // Add Life Insurance companies to Profit Analysis logic if needed.
+                    // Currently incomeDetailsByCompany mainly stores non-life calc results with deductions.
+                    // Life insurance usually has revenue only in this simplified model (no deductions specified in code for individual life companies except total).
+                    // So we focus on Non-Life for profit/margin analysis as per current logic structure where deductions are detailed.
+
                     results.push({
                         id: scenario.id,
                         achievers, 
@@ -651,7 +702,8 @@
                         totalCompanions: display_totalCompanions, 
                         monthlyPerformanceByCompany,
                         companyToTypeMap,
-                        strategyData: { companyShares, topProducts: topProducts.slice(0, 10) } // Top 10 products
+                        strategyData: { companyShares, topProducts: topProducts.slice(0, 10) },
+                        profitAnalysis: { bestProfitCompany, bestMarginCompany }
                     });
                 }
                 self.postMessage({ results });
@@ -744,10 +796,13 @@
                 'KB손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
                 '하나손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 },
                 'AIG손보': { commissionPreservation: 1, otherDeduction: 0, lossPreservation: 0.5, isfTravelBonus: 2, travelExpenseBonus20: 1, travelExpenseBonus30: 1.5, isfManagerTO: 0.2, managerSpecialNextMonth: 0.4, managerSpecial13th: 0.6 }
+            },
+            specialBonus: {
+                tier1: { min: 400000, max: 800000, amount: 400000 },
+                tier2: { min: 800000, max: 1300000, amount: 800000 }
             }
         };
         
-        // Headers for template download (Updated to show % units)
         const templateHeaders = {
             nonLife: ['보험사', '13회차 유지율(%)', '상생시상 (익월)(%)', '상생시상 (13회_유지)(%)', 'ISF 추가(%)'],
             life: ['보험사명', 'ISF인정률(%)', '13회차 유지율(%)', '시상재원\n(익월)(%)', '시상재원\n(13회)(%)'],
@@ -807,11 +862,12 @@
                     
                     const params = { nonLife: {}, life: [], expense: {} };
                     
-                    // Import Logic: Assume input is in Percent (%), so divide by 100 for internal logic
                     nonLifeJson.slice(1).forEach(row => { if(row[0]) params.nonLife[row[0]] = { retentionRate: parseFloat(row[1])/100, coopBonusNextMonth: parseFloat(row[2])/100, coopBonus13th: parseFloat(row[3])/100, isfAdd: parseFloat(row[4])/100 }; });
-                    lifeJson.slice(1).forEach(row => { if(row[0]) params.life.push({ company: row[0], recognitionRate: parseFloat(row[1]), retentionRate: parseFloat(row[2])/100, nextMonth: parseFloat(row[3])/100, month13: parseFloat(row[4])/100 }); }); // Recognition Rate is usually just an index (e.g. 100), keep as is or handled specifically in worker. Based on code, worker compares it directly. Keep as is.
+                    lifeJson.slice(1).forEach(row => { if(row[0]) params.life.push({ company: row[0], recognitionRate: parseFloat(row[1]), retentionRate: parseFloat(row[2])/100, nextMonth: parseFloat(row[3])/100, month13: parseFloat(row[4])/100 }); });
                     expenseJson.slice(2).forEach(row => { if (row[0]) { params.expense[row[0]] = { commissionPreservation: parseFloat(row[1])/100, otherDeduction: parseFloat(row[2])/100, lossPreservation: parseFloat(row[3])/100, isfTravelBonus: parseFloat(row[4])/100, travelExpenseBonus20: parseFloat(row[5])/100, travelExpenseBonus30: parseFloat(row[6])/100, isfManagerTO: parseFloat(row[7])/100, managerSpecialNextMonth: parseFloat(row[8])/100, managerSpecial13th: parseFloat(row[9])/100 }; } });
                     
+                    params.specialBonus = defaultIncomeParams.specialBonus;
+
                     loadedIncomeParams = params;
                     incomeFileStatusDisplay.innerHTML = `<span class="text-green-600 font-bold">✅ 수입 조건 파일이 로드되었습니다. (단위: % 자동 변환됨)</span>`;
                     checkRunButtonStatus();
@@ -859,10 +915,8 @@
         function downloadTemplate() {
             const wb = XLSX.utils.book_new();
 
-            // Export Logic: Multiply internal ratio by 100 to show as Percentage
-            const toPercent = (val) => Math.round(val * 10000) / 100; // Round to 2 decimal places
+            const toPercent = (val) => Math.round(val * 10000) / 100;
 
-            // 1. Non-Life Sheet
             const nonLifeData = [templateHeaders.nonLife];
             Object.keys(defaultIncomeParams.nonLife).forEach(company => {
                 const p = defaultIncomeParams.nonLife[company];
@@ -871,7 +925,6 @@
             const wsNonLife = XLSX.utils.aoa_to_sheet(nonLifeData);
             XLSX.utils.book_append_sheet(wb, wsNonLife, '손보수입');
 
-            // 2. Life Sheet
             const lifeData = [templateHeaders.life.map(h => h.replace(/\n/g, ' '))];
             defaultIncomeParams.life.forEach(rule => {
                 lifeData.push([rule.company, rule.recognitionRate, toPercent(rule.retentionRate), toPercent(rule.nextMonth), toPercent(rule.month13)]);
@@ -879,7 +932,6 @@
             const wsLife = XLSX.utils.aoa_to_sheet(lifeData);
             XLSX.utils.book_append_sheet(wb, wsLife, '생보수입');
 
-            // 3. Expense Sheet
             const expenseData = [
                 ['지출항목', '', '', '', 'ISF', '', '', '관리자', '', ''],
                 templateHeaders.expense.map(h => h.replace(/\n/g, ' ')),
@@ -931,14 +983,12 @@
             }
 
             const toPercent = (val) => Math.round(val * 10000) / 100;
-            // Changed to justify-center and text-center
             const inputCell = (val) => `<div class="flex items-center justify-center space-x-1"><input type="number" step="0.1" class="w-16 p-1 bg-gray-100 border border-gray-300 rounded text-center text-gray-800" value="${val}"><span class="text-gray-500">%</span></div>`;
 
             let html = '';
 
             html += '<h3 class="text-lg font-semibold text-cyan-700 mb-2">손보수입 (단위: %)</h3>';
             html += '<div class="overflow-x-auto"><table id="nonLifeTable" class="w-full text-sm text-left text-gray-800"><thead><tr class="text-xs text-gray-600 uppercase bg-gray-100">'; 
-            // Added text-center to header
             templateHeaders.nonLife.forEach(h => html += `<th class="px-4 py-2 whitespace-nowrap text-center">${h.replace(/\(%\)/g, '').replace(/\n/g, ' ')}</th>`);
             html += '</tr></thead><tbody>';
             for (const company in loadedIncomeParams.nonLife) {
@@ -955,7 +1005,6 @@
 
             html += '<h3 class="text-lg font-semibold text-cyan-700 mt-6 mb-2">생보수입 (단위: %)</h3>';
             html += '<div class="overflow-x-auto"><table id="lifeTable" class="w-full text-sm text-left text-gray-800"><thead><tr class="text-xs text-gray-600 uppercase bg-gray-100">'; 
-            // Added text-center to header
             templateHeaders.life.forEach(h => html += `<th class="px-4 py-2 whitespace-nowrap text-center">${h.replace(/\(%\)/g, '').replace(/\n/g, ' ')}</th>`);
             html += '</tr></thead><tbody>';
             loadedIncomeParams.life.forEach((rule, index) => {
@@ -974,7 +1023,6 @@
             
             templateHeaders.expense.forEach(h => {
                 let text = h.replace(/\(%\)/g, '').replace(/\n/g, ' ');
-                // Break line specifically for "여행경비 추가시상" and style the parentheses content
                 if (text.includes('여행경비 추가시상')) {
                     text = text.replace('(', '<br><span class="text-xs font-normal">(').replace(')', ')</span>');
                 }
@@ -999,13 +1047,34 @@
             }
             html += '</tbody></table></div>';
 
+            const special = loadedIncomeParams.specialBonus || defaultIncomeParams.specialBonus;
+            html += '<h3 class="text-lg font-semibold text-cyan-700 mt-6 mb-2">미달성자 특별 시상 기준</h3>';
+            html += '<div class="bg-gray-50 p-4 rounded-lg border border-gray-200"><div class="grid grid-cols-1 gap-4">';
+            html += `
+                <div class="flex items-center space-x-4">
+                    <span class="font-medium text-gray-700 w-24">구간 1:</span>
+                    <div class="flex items-center"><input type="number" id="specialTier1Min" step="100000" class="w-28 p-2 bg-white border border-gray-300 rounded text-right" value="${special.tier1.min}"><span class="ml-1 text-sm text-gray-600">원 이상 ~</span></div>
+                    <div class="flex items-center"><input type="number" id="specialTier1Max" step="100000" class="w-28 p-2 bg-white border border-gray-300 rounded text-right" value="${special.tier1.max}"><span class="ml-1 text-sm text-gray-600">원 미만</span></div>
+                    <span class="mx-2">→</span>
+                    <div class="flex items-center"><span class="mr-2 text-sm text-gray-600">시상금:</span><input type="number" id="specialTier1Amount" step="100000" class="w-28 p-2 bg-white border border-gray-300 rounded text-right" value="${special.tier1.amount}"><span class="ml-1 text-sm text-gray-600">원</span></div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="font-medium text-gray-700 w-24">구간 2:</span>
+                    <div class="flex items-center"><input type="number" id="specialTier2Min" step="100000" class="w-28 p-2 bg-white border border-gray-300 rounded text-right" value="${special.tier2.min}"><span class="ml-1 text-sm text-gray-600">원 이상 ~</span></div>
+                    <div class="flex items-center"><input type="number" id="specialTier2Max" step="100000" class="w-28 p-2 bg-white border border-gray-300 rounded text-right" value="${special.tier2.max}"><span class="ml-1 text-sm text-gray-600">원 미만</span></div>
+                    <span class="mx-2">→</span>
+                    <div class="flex items-center"><span class="mr-2 text-sm text-gray-600">시상금:</span><input type="number" id="specialTier2Amount" step="100000" class="w-28 p-2 bg-white border border-gray-300 rounded text-right" value="${special.tier2.amount}"><span class="ml-1 text-sm text-gray-600">원</span></div>
+                </div>
+            `;
+            html += '</div></div>';
+
             incomeModalBody.innerHTML = html;
             incomeModal.classList.remove('hidden');
             setTimeout(() => incomeModal.classList.add('opacity-100'), 10);
         }
 
         function saveIncomeParams() {
-            const newParams = { nonLife: {}, life: [], expense: {} };
+            const newParams = { nonLife: {}, life: [], expense: {}, specialBonus: {} };
             
             const toRatio = (val) => parseFloat(val) / 100;
 
@@ -1049,6 +1118,19 @@
                     managerSpecial13th: toRatio(cells[9].querySelector('input').value)
                 };
             });
+
+            newParams.specialBonus = {
+                tier1: {
+                    min: parseFloat(document.getElementById('specialTier1Min').value) || 0,
+                    max: parseFloat(document.getElementById('specialTier1Max').value) || 0,
+                    amount: parseFloat(document.getElementById('specialTier1Amount').value) || 0
+                },
+                tier2: {
+                    min: parseFloat(document.getElementById('specialTier2Min').value) || 0,
+                    max: parseFloat(document.getElementById('specialTier2Max').value) || 0,
+                    amount: parseFloat(document.getElementById('specialTier2Amount').value) || 0
+                }
+            };
 
             loadedIncomeParams = newParams;
             incomeFileStatusDisplay.innerHTML = `<span class="text-yellow-600 font-bold">✅ 편집된 수입 조건이 저장되었습니다.</span>`;
@@ -1240,9 +1322,33 @@
                         }
                         strategyHtml += `</div>`;
 
+                        // Profit Analysis HTML (New)
+                        let profitAnalysisHtml = '';
+                        if(res.profitAnalysis) {
+                            const bestProfit = res.profitAnalysis.bestProfitCompany;
+                            const bestMargin = res.profitAnalysis.bestMarginCompany;
+                            if(bestProfit.name !== '-' && bestMargin.name !== '-') {
+                                profitAnalysisHtml = `
+                                    <div class="mt-3 bg-yellow-50 border border-yellow-200 p-3 rounded-md text-sm">
+                                        <p class="text-yellow-800 font-medium mb-2 flex items-center">💎 수익성 분석 (손보 기준)</p>
+                                        <div class="grid grid-cols-1 gap-2">
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-xs text-gray-600">🏆 최고 효자 (순수익):</span>
+                                                <span class="font-bold text-yellow-700">${bestProfit.name} (${Math.round(bestProfit.value/10000).toLocaleString()}만)</span>
+                                            </div>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-xs text-gray-600">📈 최고 알짜 (이익률):</span>
+                                                <span class="font-bold text-yellow-700">${bestMargin.name} (${bestMargin.value.toFixed(1)}%)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                        }
+
                         const resultCard = document.createElement('div');
                         resultCard.className = 'bg-white p-5 rounded-lg border border-gray-200';
-                        resultCard.innerHTML = `<h3 class="text-xl font-bold text-teal-600 mb-2">시나리오 ${res.id} 결과</h3><div class="text-center mb-3"><p class="text-lg font-semibold text-gray-800">총 달성 인원: <span class="text-2xl font-bold text-yellow-600">${res.achievers.length.toLocaleString()}</span>명</p></div>${tierCountsHtml}${nonAchieverHtml}<div class="mt-4">${summaryHtml}</div>${strategyHtml}<div class="mt-4">${incomeHtml}</div><button data-scenario-id="${res.id}" class="download-btn mt-4 w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition duration-300">💾 결과 엑셀 다운로드</button>`;
+                        resultCard.innerHTML = `<h3 class="text-xl font-bold text-teal-600 mb-2">시나리오 ${res.id} 결과</h3><div class="text-center mb-3"><p class="text-lg font-semibold text-gray-800">총 달성 인원: <span class="text-2xl font-bold text-yellow-600">${res.achievers.length.toLocaleString()}</span>명</p></div>${tierCountsHtml}${nonAchieverHtml}${profitAnalysisHtml}<div class="mt-4">${summaryHtml}</div>${strategyHtml}<div class="mt-4">${incomeHtml}</div><button data-scenario-id="${res.id}" class="download-btn mt-4 w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition duration-300">💾 결과 엑셀 다운로드</button>`;
                         resultsGrid.appendChild(resultCard);
                     });
                     resultsContainer.innerHTML = '';
@@ -1425,7 +1531,61 @@
                         </tbody>
                     </table>`;
 
-                let detailsTableHtml = `<h3 class="print-title"><span>예상 수입 분석</span><span style="font-size: 8pt; font-weight: normal;">(단위 : 원)</span></h3>`;
+                // --- NEW: Strategy Analysis for Print ---
+                const strategyData = res.strategyData || { companyShares: [], topProducts: [] };
+                if (strategyData.companyShares.length > 0 || strategyData.topProducts.length > 0) {
+                    page1Html += `<h3 class="print-title" style="margin-top: 20px;">전략 분석 (판매 비중)</h3>`;
+                    
+                    if (strategyData.companyShares.length > 0) {
+                        page1Html += `<div style="margin-bottom: 10px; font-size: 9pt;"><strong>🏢 보험사별 점유율 (Top 5)</strong></div>`;
+                        strategyData.companyShares.slice(0, 5).forEach(item => {
+                            page1Html += `
+                                <div style="margin-bottom: 4px; font-size: 8pt;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                        <span>${item.name}</span>
+                                        <span>${item.percentage.toFixed(1)}%</span>
+                                    </div>
+                                    <div class="print-bar-bg" style="width: 100%; height: 6px; border-radius: 3px;">
+                                        <div class="print-bar-fill-blue" style="width: ${item.percentage}%; height: 100%; border-radius: 3px;"></div>
+                                    </div>
+                                </div>`;
+                        });
+                    }
+
+                    if (strategyData.topProducts.length > 0) {
+                        page1Html += `<div style="margin-top: 10px; margin-bottom: 5px; font-size: 9pt;"><strong>📦 상품별 점유율 (Top 5)</strong></div>`;
+                        strategyData.topProducts.slice(0, 5).forEach(item => {
+                            page1Html += `
+                                <div style="margin-bottom: 4px; font-size: 8pt;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%;">${item.name}</span>
+                                        <span>${item.percentage.toFixed(1)}%</span>
+                                    </div>
+                                    <div class="print-bar-bg" style="width: 100%; height: 6px; border-radius: 3px;">
+                                        <div class="print-bar-fill-teal" style="width: ${item.percentage}%; height: 100%; border-radius: 3px;"></div>
+                                    </div>
+                                </div>`;
+                        });
+                    }
+                }
+                // --- END: Strategy Analysis for Print ---
+
+                // --- NEW: Profit Analysis for Print (Optional, but good for completeness) ---
+                if (res.profitAnalysis && res.profitAnalysis.bestProfitCompany.name !== '-') {
+                     const bestProfit = res.profitAnalysis.bestProfitCompany;
+                     const bestMargin = res.profitAnalysis.bestMarginCompany;
+                     page1Html += `
+                        <div style="margin-top: 15px; padding: 8px; border: 1px solid #ccc; background-color: #fffbeb; font-size: 9pt;">
+                            <strong>💎 수익성 분석 (손보 기준)</strong><br>
+                            <span style="margin-right: 15px;">🏆 최고 효자 (순수익): <strong>${bestProfit.name} (${Math.round(bestProfit.value/10000).toLocaleString()}만)</strong></span>
+                            <span>📈 최고 알짜 (이익률): <strong>${bestMargin.name} (${bestMargin.value.toFixed(1)}%)</strong></span>
+                        </div>
+                     `;
+                }
+                // --- END: Profit Analysis for Print ---
+
+
+                let detailsTableHtml = `<h3 class="print-title" style="margin-top: 20px;"><span>예상 수입 분석</span><span style="font-size: 8pt; font-weight: normal;">(단위 : 원)</span></h3>`;
                 
                 const totalDetails = res.incomeDetails;
                 const companyDetails = res.incomeDetailsByCompany;
